@@ -21,6 +21,45 @@ function splitSentences(text: string): string[] {
   return sentences.length > 0 ? sentences : [text.trim()]
 }
 
+// TextRank: Jaccard word-overlap similarity, damping d=0.85, 10 iterations (PMC 2024)
+function textRankScores(sentences: string[]): number[] {
+  const n = sentences.length
+  if (n === 1) return [1]
+
+  const wordSets = sentences.map((s) => new Set(s.toLowerCase().split(/\s+/)))
+  const scores = new Array<number>(n).fill(1 / n)
+
+  const similarities: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0))
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue
+      const si = wordSets[i]!
+      const sj = wordSets[j]!
+      let inter = 0
+      for (const w of si) if (sj.has(w)) inter++
+      const union = si.size + sj.size - inter
+      similarities[i]![j] = union > 0 ? inter / union : 0
+    }
+  }
+
+  for (let iter = 0; iter < 10; iter++) {
+    const next = new Array<number>(n).fill(0)
+    for (let i = 0; i < n; i++) {
+      let incoming = 0
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue
+        const rowSum = similarities[j]!.reduce((a, v) => a + v, 0)
+        incoming += rowSum > 0 ? (similarities[j]![i]! / rowSum) * scores[j]! : 0
+      }
+      next[i] = (1 - 0.85) / n + 0.85 * incoming
+    }
+    for (let i = 0; i < n; i++) scores[i] = next[i]!
+  }
+
+  const max = Math.max(...scores)
+  return max > 0 ? scores.map((s) => s / max) : scores
+}
+
 export function selectKeySentence(text: string): string {
   const trimmed = text.trim()
   const words = trimmed.split(/\s+/)
@@ -29,6 +68,8 @@ export function selectKeySentence(text: string): string {
 
   const sentences = splitSentences(trimmed)
   if (sentences.length === 0) return trimmed.slice(0, 120)
+
+  const centrality = textRankScores(sentences)
 
   let best = sentences[0] ?? trimmed
   let bestScore = -Infinity
@@ -52,11 +93,11 @@ export function selectKeySentence(text: string): string {
       wordCount > 0 ? new Set(sWords.map((w) => w.toLowerCase())).size / wordCount : 0
 
     const positionBonus = i === 0 || i === sentences.length - 1 ? 0.1 : 0
-
-    // Absolute decision count matters more than density for short sentences
     const decisionAbsolute = decisionCount * 0.4
-    const score =
-      decisionDensity * 3.0 + decisionAbsolute + lengthBonus + uniqueRatio * 0.3 + positionBonus
+
+    const decisionScore = decisionDensity * 3.0 + decisionAbsolute + lengthBonus + uniqueRatio * 0.3 + positionBonus
+    // Blend 50/50: TextRank centrality + decision score
+    const score = 0.5 * (centrality[i] ?? 0) + 0.5 * decisionScore
 
     if (score > bestScore) {
       bestScore = score

@@ -79,6 +79,12 @@ export interface CompressOptions {
   minEntityFrequency?: number
   minTopicFrequency?: number
   stopWords?: string[]
+  /** Softmax temperature for weight normalization. Lower = sharper separation (default 0.5) */
+  temperature?: number
+  /** Max tunnels per zettel — prevents O(n²) explosion on large docs (default 3) */
+  tunnelTopK?: number
+  /** Minimum Jaccard similarity score to emit a tunnel (default 0.3) */
+  tunnelThreshold?: number
 }
 
 export interface InjectOptions {
@@ -86,6 +92,8 @@ export interface InjectOptions {
   minWeight?: number
   flags?: FlagName[]
   format?: 'aaak' | 'json' | 'markdown'
+  /** Hard token budget — stops adding zettels once estimated token count is reached */
+  maxTokenBudget?: number
 }
 
 export interface TextChunk {

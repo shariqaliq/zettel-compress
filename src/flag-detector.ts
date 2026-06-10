@@ -12,14 +12,20 @@ const FLAG_KEYWORDS: Record<FlagName, string[]> = {
 const FLAG_ORDER: FlagName[] = ['DECISION', 'ORIGIN', 'CORE', 'PIVOT', 'GENESIS', 'TECHNICAL']
 
 const NEGATION_WORDS = new Set([
-  'not', "n't", 'never', 'no', 'neither', 'hardly', 'barely',
+  'not', "n't", 'never', 'no', 'neither', 'hardly', 'barely', 'scarcely',
   'without', 'unable', 'failed', 'refused', 'denied',
 ])
 
+const IMPLICIT_NEGATORS = ['failed to', 'unable to', 'refused to', 'avoided', 'lack of', 'free from']
+
 function isNegated(lower: string, kwIndex: number): boolean {
-  const window = lower.slice(Math.max(0, kwIndex - 40), kwIndex)
-  const tail = window.trim().split(/\s+/).slice(-4)
-  return tail.some((w) => NEGATION_WORDS.has(w.replace(/[^a-z']/g, '')))
+  const window = lower.slice(Math.max(0, kwIndex - 50), kwIndex)
+  const tail = window.trim().split(/\s+/).slice(-6)
+  if (tail.some((w) => NEGATION_WORDS.has(w.replace(/[^a-z']/g, '')))) return true
+  return IMPLICIT_NEGATORS.some((phrase) => {
+    const phraseIdx = lower.lastIndexOf(phrase, kwIndex)
+    return phraseIdx !== -1 && kwIndex - phraseIdx <= 50
+  })
 }
 
 export function detectFlags(text: string): FlagName[] {

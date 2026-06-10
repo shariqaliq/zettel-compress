@@ -48,7 +48,45 @@ export function compress(text: string, options?: CompressOptions): CompressResul
     }
   })
 
-  const tunnels = buildTunnels(zettels, entityIndex)
+  // Softmax temperature normalization with rank-based input (arXiv 2025)
+  // When raw weights cluster near 1.0, softmax on raw values can't differentiate them.
+  // Solution: softmax over rank positions (0..n-1) scaled by temperature, then min-max
+  // map back to [0,1]. Guarantees spread regardless of raw score clustering.
+  const T = options?.temperature ?? 0.5
+  if (zettels.length > 1) {
+    const n = zettels.length
+    // Get indices sorted by raw weight ascending (rank 0 = lowest raw weight)
+    const sortedIdx = zettels
+      .map((z, i) => ({ i, w: z.weight }))
+      .sort((a, b) => a.w - b.w)
+      .map((x) => x.i)
+
+    const rankOf = new Array<number>(n)
+    sortedIdx.forEach((originalIdx, rank) => { rankOf[originalIdx] = rank })
+
+    // Normalize rank to [0, 1] before dividing by T so behavior is scale-independent of n
+    const scaled = rankOf.map((r) => r / (n - 1) / T)
+    const maxScaled = Math.max(...scaled)
+    const exps = scaled.map((s) => Math.exp(s - maxScaled))
+    const sumExps = exps.reduce((a, v) => a + v, 0)
+    const softmax = exps.map((e) => e / sumExps)
+
+    // Min-max normalize softmax outputs to [0, 1]
+    const sMin = Math.min(...softmax)
+    const sMax = Math.max(...softmax)
+    for (let i = 0; i < n; i++) {
+      const normalized = sMax > sMin ? (softmax[i]! - sMin) / (sMax - sMin) : 1.0
+      const z = zettels[i]
+      if (z) z.weight = Math.round(normalized * 100) / 100
+    }
+  }
+
+  const tunnels = buildTunnels(
+    zettels,
+    entityIndex,
+    options?.tunnelThreshold,
+    options?.tunnelTopK,
+  )
 
   return {
     zettels,
@@ -122,6 +160,13 @@ export function injectContext(result: CompressResult, options?: InjectOptions): 
 
   if (options?.maxZettels !== undefined) {
     zettels = [...zettels].sort((a, b) => b.weight - a.weight).slice(0, options.maxZettels)
+  }
+
+  // Token budget: ~15 tokens per zettel (Structured Distillation, arXiv 2026)
+  if (options?.maxTokenBudget !== undefined) {
+    const TOKENS_PER_ZETTEL = 15
+    const limit = Math.floor(options.maxTokenBudget / TOKENS_PER_ZETTEL)
+    zettels = zettels.slice(0, limit)
   }
 
   const format = options?.format ?? 'aaak'

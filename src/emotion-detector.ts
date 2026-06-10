@@ -35,18 +35,24 @@ const EMOTION_KEYWORDS: Record<EmotionName, string[]> = {
 
 const DECISION_WORDS = ['decided', 'chose', 'committed', 'resolved', 'must', 'will', 'determined', 'going to']
 
-// Negation window: if any of these appear within 4 words before a keyword, suppress the match
+// Negation window: if any of these appear within 6 words before a keyword, suppress the match
 const NEGATION_WORDS = new Set([
   'not', "n't", 'never', 'no', 'neither', 'hardly', 'barely', 'scarcely',
   'without', 'unable', 'failed', 'refused', 'denied',
 ])
 
+// Implicit multi-word negators (arXiv 2025 negation taxonomy)
+const IMPLICIT_NEGATORS = ['failed to', 'unable to', 'refused to', 'avoided', 'lack of', 'free from']
+
 function isNegated(lower: string, kwIndex: number): boolean {
-  // Look at the 40 characters before the keyword for a negation word
-  const window = lower.slice(Math.max(0, kwIndex - 40), kwIndex)
+  const window = lower.slice(Math.max(0, kwIndex - 50), kwIndex)
   const windowWords = window.trim().split(/\s+/)
-  const tail = windowWords.slice(-4)
-  return tail.some((w) => NEGATION_WORDS.has(w.replace(/[^a-z']/g, '')))
+  const tail = windowWords.slice(-6)
+  if (tail.some((w) => NEGATION_WORDS.has(w.replace(/[^a-z']/g, '')))) return true
+  return IMPLICIT_NEGATORS.some((phrase) => {
+    const phraseIdx = lower.lastIndexOf(phrase, kwIndex)
+    return phraseIdx !== -1 && kwIndex - phraseIdx <= 50
+  })
 }
 
 export function detectEmotions(text: string): EmotionName[] {

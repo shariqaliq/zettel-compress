@@ -5,7 +5,7 @@
 
 Deterministic, LLM-free text compression into structured **zettel memory units** with emotion weights, entity codes, importance flags, and inter-unit tunnel links.
 
-Cut conversation history from 10,000 tokens to ~300–500 tokens while preserving the decisions, emotions, and entities that actually matter for LLM context.
+Cut conversation history from 10,000 tokens to ~100–200 tokens while preserving the decisions, emotions, and entities that actually matter for LLM context.
 
 **Zero runtime dependencies. Works in Node.js, browsers, Cloudflare Workers, and Vercel Edge.**
 
@@ -13,65 +13,79 @@ Cut conversation history from 10,000 tokens to ~300–500 tokens while preservin
 
 ## How it compares
 
-Benchmarked on the same 231-token conversation (1,138 chars):
+Benchmarked against `node-summarizer` across five real-world datasets ranging from 190 to 10,566 tokens:
 
-| | `zettel-compress` | `node-summarizer` | Raw text |
-|---|---|---|---|
-| Output tokens | **105** | 48 | 231 |
-| Compression | **63%** | 79% | — |
-| Time | 1.6ms | <1ms | — |
-| Output type | Structured objects | Plain string | Plain string |
-| Entities extracted | ✅ Alice, Bob | ❌ | ❌ |
-| Emotion detection | ✅ conviction, fear, exhaustion | ❌ | ❌ |
-| Importance flags | ✅ DECISION, CORE, PIVOT | ❌ | ❌ |
-| Queryable / filterable | ✅ | ❌ | ❌ |
-| Filter by importance | ✅ `minWeight`, `flags` | ❌ | ❌ |
-| Encode / decode | ✅ round-trip AAAK | ❌ | ❌ |
-| Zero dependencies | ✅ | ❌ | — |
-| Browser / Edge safe | ✅ | ❌ | — |
+| | `zettel-compress` | `node-summarizer` (freq) | `node-summarizer` (rank) | Raw text |
+|---|---|---|---|---|
+| **190-token conversation** | **4t (97.9%)** | 36t (81%) | 26t (86%) | 190t |
+| **1,937-token tech article** | **88t (95.5%)** | 236t (88%) | 229t (88%) | 1,937t |
+| **4,878-token narrative** | **192t (96.1%)** | 333t (93%) | 164t (97%) | 4,878t |
+| **8,271-token memoir** | **106t (98.7%)** | 938t (89%) | 510t (94%) | 8,271t |
+| **10,566-token tech docs** | **218t (97.9%)** | 1,369t (87%) | 82t (99%) | 10,566t |
+| Output type | Structured objects | Plain string | Plain string | Plain string |
+| Entities extracted | ✅ Alice, Bob, Carol | ❌ | ❌ | ❌ |
+| Emotion detection | ✅ 30 states | ❌ | ❌ | ❌ |
+| Importance flags | ✅ DECISION, CORE, PIVOT | ❌ | ❌ | ❌ |
+| Per-zettel weight score | ✅ | ❌ | ❌ | ❌ |
+| Filter by weight / flag | ✅ `minWeight`, `flags` | ❌ | ❌ | ❌ |
+| Hard token budget | ✅ `maxTokenBudget` | ❌ | ❌ | ❌ |
+| Encode / decode round-trip | ✅ AAAK format | ❌ | ❌ | ❌ |
+| Output as JSON / Markdown | ✅ | ❌ | ❌ | ❌ |
+| Inter-zettel tunnel graph | ✅ | ❌ | ❌ | ❌ |
+| Zero dependencies | ✅ | ❌ (2 deps) | ❌ (2 deps) | — |
+| Browser / Edge safe | ✅ | ❌ Node-only | ❌ Node-only | — |
+| TypeScript types | ✅ full `.d.ts` | ❌ | ❌ | — |
 
-**`node-summarizer` compresses more aggressively** but throws away everything except 3 sentences — no structure, no metadata, no way to know *why* something was kept. You can't filter it, query it, or store it efficiently.
+### What the numbers mean
 
-**`zettel-compress` compresses less** but gives you a structured memory object. You control what gets injected — inject only `DECISION` flags, only weight ≥ 0.8, or only the top 3 zettels. The output is a queryable data structure, not a black-box string.
+**`node-summarizer`** picks N sentences and returns a plain string — fast, but structureless. On large inputs its frequency method actually produces *more* tokens than zettel-compress's `injectContext(10)` because it scales sentence count with input size. The rank method can compress more aggressively but takes 40–155ms on larger texts and still gives you no metadata.
 
-### Real output comparison (same input)
+**`zettel-compress`** always outputs a fixed budget (`injectContext(10)` = top 10 zettels regardless of input size), so reduction improves as input grows. On a 10,566-token document it emits 218 tokens — structured, filterable, and round-trippable. `wakeUp()` can trim that to ~52 tokens for the highest-importance moments only.
 
-**`node-summarizer`** — 3 sentences, no metadata, no structure:
+The tradeoff is intentional: zettel-compress compresses *selectively*, not exhaustively. You decide what gets injected — only `DECISION` flags, only weight ≥ 0.8, only the top 3 zettels, or a hard 300-token budget.
+
+### Real output comparison (same conversation input)
+
+**`node-summarizer` (frequency)** — sentences, no metadata:
 ```
 The team agreed this was the right approach despite the tight deadline.
-Alice was worried about the security vulnerabilities in the current JWT implementation.
-He committed to completing the work by Friday and presented his plan to the team.
+This is the core of everything we build next.
+This is the most important thing we've shipped.
+```
+
+**`node-summarizer` (rank)** — different sentences, still no metadata:
+```
+This is the core of everything we build next.
+Alice: We need to fix this before the product launch next week.
 ```
 
 **`zettel-compress`** — structured, filterable, with full metadata:
 ```
-FILE:002|ALC+BBB||
-001:ALC+BBB|security_authentication_jwt|"He committed to completing the work by Friday."|1.00|conviction+fear|DECISION+CORE+TECHNICAL
-002:|security_rotation_token_system|"The system they created will protect millions of users."|1.00|exhaustion+pride|CORE+PIVOT+TECHNICAL
+FILE:001|AGR+ALC+BBB||
+001:AGR+ALC+BBB+JWT|alice_bob_security_jwt_system|"We decided to go with rotating short-lived tokens plus a Redis-backed blocklist."|1.00|conviction+fear+exhaustion+anticipation|DECISION+ORIGIN+CORE+TECHNICAL
 ```
 
-With wake-up summary:
+**`zettel-compress` `wakeUp()`** — narrative summary of highest-weight moments:
 ```
-Decision: He committed to completing the work by Friday.
-Origin: The system they created will protect millions of users.
+Decision: We decided to go with rotating short-lived tokens plus a Redis-backed blocklist.
 ```
 
 ---
 
 ## How it works
 
-`zettel-compress` ports the [AAAK dialect](https://mempalace.github.io/mempalace/concepts/aaak-dialect.html) from the [MemPalace](https://github.com/mempalace/mempalace) project into a pure TypeScript npm package.
+`zettel-compress` ports the [AAAK dialect](https://github.com/mempalace/mempalace) from the [MemPalace](https://github.com/mempalace/mempalace) project into a pure TypeScript npm package.
 
 Text is chunked on paragraph boundaries, then each chunk becomes a **zettel** — an atomic memory unit containing:
 
 - **entities** — proper nouns detected by frequency (auto-coded to 3-letter codes like `ALC`, `BOB`)
 - **topics** — key subject terms with CamelCase/ALL-CAPS boosts
-- **quote** — the single most information-dense sentence (scored by decision-word density)
-- **weight** — 0–1 importance score based on flags, emotions, and decision-word density
-- **emotions** — 30 emotion states detected via keyword signals (no LLM)
+- **quote** — the most information-dense sentence, scored by TextRank centrality blended with decision-word density
+- **weight** — 0–1 importance score, rank-normalized via softmax so scores are always spread across the full range
+- **emotions** — 30 emotion states detected via keyword signals with 6-word negation window (no LLM)
 - **flags** — `DECISION | ORIGIN | CORE | PIVOT | GENESIS | TECHNICAL`
 
-**Tunnels** link zettels that share 2+ entities or 3+ topics. A **layer-1 wake-up** narrative extracts the highest-weight moments for a quick human-readable summary.
+**Tunnels** connect zettels that share entities or topics above a Jaccard similarity threshold, capped at 3 tunnels per zettel to prevent graph explosion. A **layer-1 wake-up** extracts the highest-weight moments into a short human-readable narrative.
 
 ---
 
@@ -93,7 +107,10 @@ const result = compress(conversationHistory)
 // Inject top 10 zettels into your LLM context (AAAK format by default)
 const context = injectContext(result, { maxZettels: 10, minWeight: 0.4 })
 
-// Get a one-paragraph narrative of the most important moments
+// Hard token budget — stop adding zettels once limit is reached
+const budgeted = injectContext(result, { maxTokenBudget: 500 })
+
+// Get a short narrative of the most important moments
 const summary = wakeUp(result)
 ```
 
@@ -107,12 +124,15 @@ Compresses a string into a `CompressResult` with `zettels`, `tunnels`, and `enti
 
 ```ts
 const result = compress(text, {
-  chunkSize: 800,         // chars per chunk (default 800)
-  chunkOverlap: 100,      // overlap between chunks (default 100)
-  date: '2026-06-10',     // ISO date for AAAK header
-  title: 'My Session',    // title for AAAK header
-  minEntityFrequency: 2,  // min occurrences to count as entity (default 2)
-  stopWords: ['foo'],     // extra stop words for topic extraction
+  chunkSize: 800,           // chars per chunk (default 800)
+  chunkOverlap: 100,        // overlap between chunks (default 100)
+  date: '2026-06-10',       // ISO date for AAAK header
+  title: 'My Session',      // title for AAAK header
+  minEntityFrequency: 1,    // min occurrences to count as entity (default 1)
+  stopWords: ['foo'],       // extra stop words for topic extraction
+  temperature: 0.5,         // softmax temperature for weight spread (default 0.5)
+  tunnelThreshold: 0.3,     // min Jaccard similarity for a tunnel (default 0.3)
+  tunnelTopK: 3,            // max tunnels per zettel (default 3)
 })
 ```
 
@@ -130,10 +150,11 @@ Returns a filtered, formatted string ready to inject into an LLM context window.
 
 ```ts
 injectContext(result, {
-  maxZettels: 10,          // keep top N by weight
-  minWeight: 0.5,          // filter to weight >= 0.5
-  flags: ['DECISION'],     // filter to specific flags only
-  format: 'aaak',          // 'aaak' | 'json' | 'markdown' (default: 'aaak')
+  maxZettels: 10,           // keep top N by weight
+  minWeight: 0.5,           // filter to weight >= 0.5
+  flags: ['DECISION'],      // filter to specific flags only
+  format: 'aaak',           // 'aaak' | 'json' | 'markdown' (default: 'aaak')
+  maxTokenBudget: 500,      // hard token ceiling (~15 tokens per zettel)
 })
 ```
 
@@ -217,6 +238,8 @@ export default {
 ## Emotion states detected
 
 `conviction`, `grief`, `joy`, `fear`, `hope`, `trust`, `wonder`, `rage`, `exhaustion`, `shame`, `pride`, `nostalgia`, `anxiety`, `relief`, `anticipation`, `frustration`, `gratitude`, `loneliness`, `inspiration`, `confusion`, `clarity`, `guilt`, `awe`, `regret`, `determination`, `vulnerability`, `acceptance`, `resistance`, `love`, `loss`
+
+---
 
 ## Importance flags
 
