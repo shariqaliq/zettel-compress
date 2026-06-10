@@ -16,8 +16,20 @@
     "zettel",
     "aaak"
   ],
-  "author": "shariqali0199@gmail.com",
+  "author": {
+    "name": "shariq",
+    "email": "shariqali0199@gmail.com",
+    "url": "https://github.com/shariqaliq"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shariqaliq/zettel-compress.git"
+  },
+  "homepage": "https://github.com/shariqaliq/zettel-compress#readme",
+  "bugs": {
+    "url": "https://github.com/shariqaliq/zettel-compress/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
