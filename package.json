@@ -1,0 +1,55 @@
+{
+  "name": "zettel-compress",
+  "version": "0.1.0",
+  "description": "Deterministic LLM-free text compression into structured zettel memory units with emotion weights, entity codes, and tunnel links",
+  "keywords": [
+    "llm",
+    "context-compression",
+    "memory",
+    "zettelkasten",
+    "conversation-history",
+    "token-reduction",
+    "nlp",
+    "langchain",
+    "ai-sdk",
+    "edge-compatible",
+    "zettel",
+    "aaak"
+  ],
+  "author": "shariqali0199@gmail.com",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm run test && npm run typecheck"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
