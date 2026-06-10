@@ -50,4 +50,16 @@ describe('detectFlags', () => {
     expect(detectFlags('I DECIDED to go.')).toContain('DECISION')
     expect(detectFlags('We FOUNDED this.')).toContain('ORIGIN')
   })
+
+  it('suppresses DECISION when negated — "not decided"', () => {
+    expect(detectFlags('We have not decided yet.')).not.toContain('DECISION')
+  })
+
+  it('suppresses ORIGIN when negated — "never founded"', () => {
+    expect(detectFlags('They never founded a proper team.')).not.toContain('ORIGIN')
+  })
+
+  it('still detects flag when negation is far away (> 4 words before keyword)', () => {
+    expect(detectFlags('Not every idea works but we finally decided to proceed with the plan.')).toContain('DECISION')
+  })
 })

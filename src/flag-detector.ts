@@ -11,6 +11,17 @@ const FLAG_KEYWORDS: Record<FlagName, string[]> = {
 
 const FLAG_ORDER: FlagName[] = ['DECISION', 'ORIGIN', 'CORE', 'PIVOT', 'GENESIS', 'TECHNICAL']
 
+const NEGATION_WORDS = new Set([
+  'not', "n't", 'never', 'no', 'neither', 'hardly', 'barely',
+  'without', 'unable', 'failed', 'refused', 'denied',
+])
+
+function isNegated(lower: string, kwIndex: number): boolean {
+  const window = lower.slice(Math.max(0, kwIndex - 40), kwIndex)
+  const tail = window.trim().split(/\s+/).slice(-4)
+  return tail.some((w) => NEGATION_WORDS.has(w.replace(/[^a-z']/g, '')))
+}
+
 export function detectFlags(text: string): FlagName[] {
   const lower = text.toLowerCase()
   const result: FlagName[] = []
@@ -18,7 +29,8 @@ export function detectFlags(text: string): FlagName[] {
   for (const flag of FLAG_ORDER) {
     const keywords = FLAG_KEYWORDS[flag]
     for (const kw of keywords) {
-      if (lower.includes(kw)) {
+      const idx = lower.indexOf(kw)
+      if (idx !== -1 && !isNegated(lower, idx)) {
         result.push(flag)
         break
       }

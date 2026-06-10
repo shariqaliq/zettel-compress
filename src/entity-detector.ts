@@ -14,7 +14,7 @@ const STOP_LIST = new Set([
   'Now', 'Here', 'There', 'Today', 'Tomorrow', 'Yesterday',
 ])
 
-export function detectEntities(text: string, minFreq = 2): string[] {
+export function detectEntities(text: string, minFreq = 1): string[] {
   const tokens = text.split(/\s+/)
   const freq: Record<string, number> = {}
 

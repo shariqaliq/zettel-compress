@@ -2,19 +2,19 @@ import { describe, it, expect } from 'vitest'
 import { detectEntities, buildEntityIndex } from '../src/entity-detector.js'
 
 describe('detectEntities', () => {
-  it('detects entity with frequency >= 2', () => {
+  it('detects entity appearing once (default minFreq=1)', () => {
+    const result = detectEntities('Bob said hello to everyone.')
+    expect(result).toContain('Bob')
+  })
+
+  it('detects entity appearing multiple times', () => {
     const result = detectEntities("Alice went to Alice's house yesterday.")
     expect(result).toContain('Alice')
   })
 
-  it('excludes entity with frequency < 2 (default)', () => {
-    const result = detectEntities('Bob said hello to everyone.')
+  it('excludes entity below explicit minFreq=2', () => {
+    const result = detectEntities('Bob said hello to everyone.', 2)
     expect(result).not.toContain('Bob')
-  })
-
-  it('respects minFreq=1 override', () => {
-    const result = detectEntities('Bob said hello.', 1)
-    expect(result).toContain('Bob')
   })
 
   it('excludes words in the stop-list', () => {

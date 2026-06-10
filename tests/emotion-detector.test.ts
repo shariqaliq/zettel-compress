@@ -37,6 +37,22 @@ describe('detectEmotions', () => {
   it('detects joy', () => {
     expect(detectEmotions('I am so happy and thrilled about this!')).toContain('joy')
   })
+
+  it('suppresses fear when negated — "not afraid"', () => {
+    expect(detectEmotions('I am not afraid of this challenge.')).not.toContain('fear')
+  })
+
+  it('suppresses conviction when negated — "never decided"', () => {
+    expect(detectEmotions('We never decided to move forward.')).not.toContain('conviction')
+  })
+
+  it('suppresses joy when negated — "hardly happy"', () => {
+    expect(detectEmotions('She was hardly happy about the outcome.')).not.toContain('joy')
+  })
+
+  it('still detects emotion when negation is far away (> 4 words before keyword)', () => {
+    expect(detectEmotions('Not everything went wrong but Alice was genuinely afraid of the result.')).toContain('fear')
+  })
 })
 
 describe('computeWeight', () => {
