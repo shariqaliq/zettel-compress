@@ -11,6 +11,53 @@ Cut conversation history from 10,000 tokens to ~300–500 tokens while preservin
 
 ---
 
+## How it compares
+
+Benchmarked on the same 231-token conversation (1,138 chars):
+
+| | `zettel-compress` | `node-summarizer` | Raw text |
+|---|---|---|---|
+| Output tokens | **105** | 48 | 231 |
+| Compression | **63%** | 79% | — |
+| Time | 1.6ms | <1ms | — |
+| Output type | Structured objects | Plain string | Plain string |
+| Entities extracted | ✅ Alice, Bob | ❌ | ❌ |
+| Emotion detection | ✅ conviction, fear, exhaustion | ❌ | ❌ |
+| Importance flags | ✅ DECISION, CORE, PIVOT | ❌ | ❌ |
+| Queryable / filterable | ✅ | ❌ | ❌ |
+| Filter by importance | ✅ `minWeight`, `flags` | ❌ | ❌ |
+| Encode / decode | ✅ round-trip AAAK | ❌ | ❌ |
+| Zero dependencies | ✅ | ❌ | — |
+| Browser / Edge safe | ✅ | ❌ | — |
+
+**`node-summarizer` compresses more aggressively** but throws away everything except 3 sentences — no structure, no metadata, no way to know *why* something was kept. You can't filter it, query it, or store it efficiently.
+
+**`zettel-compress` compresses less** but gives you a structured memory object. You control what gets injected — inject only `DECISION` flags, only weight ≥ 0.8, or only the top 3 zettels. The output is a queryable data structure, not a black-box string.
+
+### Real output comparison (same input)
+
+**`node-summarizer`** — 3 sentences, no metadata, no structure:
+```
+The team agreed this was the right approach despite the tight deadline.
+Alice was worried about the security vulnerabilities in the current JWT implementation.
+He committed to completing the work by Friday and presented his plan to the team.
+```
+
+**`zettel-compress`** — structured, filterable, with full metadata:
+```
+FILE:002|ALC+BBB||
+001:ALC+BBB|security_authentication_jwt|"He committed to completing the work by Friday."|1.00|conviction+fear|DECISION+CORE+TECHNICAL
+002:|security_rotation_token_system|"The system they created will protect millions of users."|1.00|exhaustion+pride|CORE+PIVOT+TECHNICAL
+```
+
+With wake-up summary:
+```
+Decision: He committed to completing the work by Friday.
+Origin: The system they created will protect millions of users.
+```
+
+---
+
 ## How it works
 
 `zettel-compress` ports the [AAAK dialect](https://mempalace.github.io/mempalace/concepts/aaak-dialect.html) from the [MemPalace](https://github.com/mempalace/mempalace) project into a pure TypeScript npm package.
