@@ -63,3 +63,58 @@ describe('chunkText', () => {
     }
   })
 })
+
+describe('chunkText — overlap boundaries and provenance (issue #5)', () => {
+  const para = (label: string) =>
+    `${label} sentence one talks about deployment strategy in detail. ` +
+    `${label} sentence two covers the migration and rollback planning thoroughly.`
+  const TEXT = [para('Alpha'), para('Bravo'), para('Charlie'), para('Delta')].join('\n\n')
+
+  it('chunk.text is the exact source slice — offsets are real provenance', () => {
+    const normalized = TEXT // no \r in fixture
+    const result = chunkText(TEXT, { chunkSize: 300, chunkOverlap: 60 })
+    expect(result.length).toBeGreaterThan(1)
+    for (const chunk of result) {
+      expect(normalized.slice(chunk.charStart, chunk.charEnd)).toBe(chunk.text)
+    }
+  })
+
+  it('no chunk begins mid-word — first token is a complete word', () => {
+    const result = chunkText(TEXT, { chunkSize: 300, chunkOverlap: 60 })
+    const words = new Set(TEXT.split(/\s+/))
+    for (const chunk of result) {
+      const firstWord = chunk.text.split(/\s+/)[0] ?? ''
+      expect(words).toContain(firstWord)
+    }
+  })
+
+  it('overlapping chunks share content from the previous chunk tail', () => {
+    const result = chunkText(TEXT, { chunkSize: 300, chunkOverlap: 60 })
+    for (let i = 1; i < result.length; i++) {
+      const prev = result[i - 1]!
+      const cur = result[i]!
+      if (cur.charStart < prev.charEnd) {
+        const shared = TEXT.slice(cur.charStart, prev.charEnd)
+        expect(prev.text.endsWith(shared)).toBe(true)
+        expect(cur.text.startsWith(shared)).toBe(true)
+      }
+    }
+  })
+
+  it('provenance holds for CRLF input against the normalized text', () => {
+    const crlf = TEXT.replace(/\n/g, '\r\n')
+    const normalized = crlf.replace(/\r\n/g, '\n')
+    const result = chunkText(crlf, { chunkSize: 300, chunkOverlap: 60 })
+    for (const chunk of result) {
+      expect(normalized.slice(chunk.charStart, chunk.charEnd)).toBe(chunk.text)
+    }
+  })
+
+  it('zero overlap starts each chunk at a paragraph boundary', () => {
+    const result = chunkText(TEXT, { chunkSize: 300, chunkOverlap: 0 })
+    for (const chunk of result) {
+      expect(chunk.text.startsWith('Alpha') || chunk.text.startsWith('Bravo') ||
+             chunk.text.startsWith('Charlie') || chunk.text.startsWith('Delta')).toBe(true)
+    }
+  })
+})
