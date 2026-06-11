@@ -1,5 +1,6 @@
 import { chunkText } from './chunker.js'
 import { detectEntities, buildEntityIndex } from './entity-detector.js'
+import { resolveCoreferences } from './coreference.js'
 import { extractTopics } from './topic-extractor.js'
 import { selectKeySentence } from './sentence-scorer.js'
 import { detectEmotions, computeWeight } from './emotion-detector.js'
@@ -67,9 +68,12 @@ export function compress(text: string, options?: CompressOptions): CompressResul
   }
 
   // Pass 1: collect all entities globally for consistent coding
-  const chunkEntities: string[][] = chunks.map((chunk) =>
+  const detectedEntities: string[][] = chunks.map((chunk) =>
     detectEntities(chunk.text, options?.minEntityFrequency),
   )
+  // Pronoun chunks inherit the most recent matching entity, so a person who
+  // becomes "she" after the first mention still appears in later zettels
+  const chunkEntities = resolveCoreferences(chunks, detectedEntities)
   const allEntityNames = [...new Set(chunkEntities.flat())]
   const entityIndex = buildEntityIndex(allEntityNames)
 
