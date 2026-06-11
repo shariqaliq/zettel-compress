@@ -330,6 +330,8 @@ export { encode, decode, encodeZettelLine, encodeTunnelLine } from './encoder.js
 export { wakeUp, topZettels } from './layer1.js'
 export { recall } from './recall.js'
 export type { RecallOptions } from './recall.js'
+export { CompressStream } from './stream.js'
+export type { StreamOptions } from './stream.js'
 export { ALL_FLAGS, ALL_EMOTIONS } from './types.js'
 export type {
   Zettel,

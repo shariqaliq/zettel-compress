@@ -114,12 +114,22 @@ function toCode(name: string): string {
 }
 
 export function buildEntityIndex(entities: string[]): EntityIndex {
-  const nameToCode: Record<string, string> = {}
-  const codeToName: Record<string, string> = {}
-  const used = new Set<string>()
+  const index: EntityIndex = { nameToCode: {}, codeToName: {} }
+  extendEntityIndex(index, entities)
+  return index
+}
+
+/**
+ * Add new names to an existing index without changing any assigned code —
+ * the invariant incremental consumers (streams, shared indexes) rely on.
+ */
+export function extendEntityIndex(index: EntityIndex, entities: string[]): void {
+  const used = new Set(Object.keys(index.codeToName))
 
   for (const name of [...entities].sort()) {
-    let base = toCode(name)
+    if (index.nameToCode[name] !== undefined) continue
+
+    const base = toCode(name)
     let code = base
     let suffix = 1
 
@@ -129,9 +139,7 @@ export function buildEntityIndex(entities: string[]): EntityIndex {
     }
 
     used.add(code)
-    nameToCode[name] = code
-    codeToName[code] = name
+    index.nameToCode[name] = code
+    index.codeToName[code] = name
   }
-
-  return { nameToCode, codeToName }
 }
