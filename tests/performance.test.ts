@@ -3,19 +3,49 @@ import { compress, injectContext, encode, decode, wakeUp, topZettels, mergeResul
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
+// Six templates with graduated flag/emotion density so raw weights are
+// genuinely distinct per chunk — identical paragraphs produce all-tied raw
+// weights, which tie-aware normalization correctly maps to a single value
+const TEMPLATES = [
+  (i: number) =>
+    `Paragraph ${i}: The weekly status meeting covered routine updates from several working groups ` +
+    `across the organization. Attendance matched previous sessions and the agenda items were ` +
+    `reviewed in the usual sequence without surprises along the way. Minutes were circulated to ` +
+    `the distribution alias afterward for reference by anyone who missed the session entirely.`,
+  (i: number) =>
+    `Paragraph ${i}: Arrangements for the upcoming quarterly review continued with the working ` +
+    `group drafting an agenda. The schedule for next month includes two checkpoint sessions and a ` +
+    `closing retrospective for the participants. The whole group expects the groundwork to wrap ` +
+    `up soon with the materials circulated ahead of time to every attendee on the invite.`,
+  (i: number) =>
+    `Paragraph ${i}: The service architecture relies on a message queue between the ingestion api ` +
+    `and the storage layer. Engineers documented the database schema and the deploy pipeline ` +
+    `configuration for the new module. The endpoint definitions live alongside the infrastructure ` +
+    `templates in the repository that the wider organization can browse at leisure.`,
+  (i: number) =>
+    `Paragraph ${i}: Bob founded the platform engineering group three years ago and remains proud ` +
+    `of that launch. The early days established the conventions that the wider organization ` +
+    `eventually adopted as standard practice everywhere. Veterans of that period describe the ` +
+    `formation of the group as the beginning of the modern stack they maintain to this day.`,
+  (i: number) =>
+    `Paragraph ${i}: Alice and the team decided to consolidate the two reporting services after ` +
+    `reviewing the maintenance burden. They are certain the merged service will simplify the ` +
+    `on-call rotation for the whole group going forward. The migration steps were written down ` +
+    `and assigned owners with target dates before the meeting wrapped for the day.`,
+  (i: number) =>
+    `Paragraph ${i}: The group committed to the rebuild and resolved to deprecate the monolith ` +
+    `after the breakthrough prototype. This decision is fundamental to the architecture roadmap ` +
+    `and everyone agreed it changed everything for the api platform. Carol was thrilled with the ` +
+    `outcome and grateful that the team concluded the debate decisively in one sitting.`,
+]
+
 function makeDoc(paragraphs: number): string {
-  return Array.from({ length: paragraphs }, (_, i) =>
-    `Paragraph ${i + 1}: Alice and Bob decided to redesign the core architecture. ` +
-    `Carol committed to the migration timeline. The team resolved to deprecate the monolith. ` +
-    `This is fundamental to system stability. Bob founded the platform engineering group. ` +
-    `Alice determined that JWT authentication was the right approach for the API. ` +
-    `The infrastructure deployment required careful planning and coordination.`,
-  ).join('\n\n')
+  return Array.from({ length: paragraphs }, (_, i) => TEMPLATES[i % 6]!(i + 1)).join('\n\n')
 }
 
-const DOC_SMALL  = makeDoc(5)   // ~5 chunks,  ~800 tokens
-const DOC_MEDIUM = makeDoc(20)  // ~20 chunks, ~3200 tokens
-const DOC_LARGE  = makeDoc(60)  // ~60 chunks, ~9600 tokens
+const DOC_SMALL  = makeDoc(6)   // ~6 chunks,  ~600 tokens
+const DOC_MEDIUM = makeDoc(24)  // ~24 chunks, ~2400 tokens
+const DOC_LARGE  = makeDoc(90)  // ~90 chunks, ~9000 tokens
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -161,16 +191,16 @@ describe('compression ratio', () => {
 // ── 4. Weight normalization quality ──────────────────────────────────────────
 
 describe('weight normalization', () => {
-  it('exactly one zettel scores 1.0 on multi-chunk input', () => {
+  it('at least one zettel scores 1.0 on multi-chunk input', () => {
     const result = compress(DOC_MEDIUM)
     const atOne = result.zettels.filter(z => z.weight === 1.0).length
-    expect(atOne).toBe(1)
+    expect(atOne).toBeGreaterThanOrEqual(1)
   })
 
-  it('exactly one zettel scores 0.0 on multi-chunk input', () => {
+  it('at least one zettel scores 0.0 on multi-chunk input', () => {
     const result = compress(DOC_MEDIUM)
     const atZero = result.zettels.filter(z => z.weight === 0.0).length
-    expect(atZero).toBe(1)
+    expect(atZero).toBeGreaterThanOrEqual(1)
   })
 
   it('all weights are in [0, 1]', () => {
@@ -181,10 +211,12 @@ describe('weight normalization', () => {
     }
   })
 
-  it('weight spread — at least 50% of zettels have unique weights on large doc', () => {
+  it('weights reflect distinct importance levels — at least 4 distinct values on large doc', () => {
+    // tie-aware normalization collapses genuinely equal raw scores, so the
+    // number of distinct weights tracks distinct importance levels, not n
     const result = compress(DOC_LARGE)
     const unique = new Set(result.zettels.map(z => z.weight)).size
-    expect(unique / result.zettels.length).toBeGreaterThanOrEqual(0.5)
+    expect(unique).toBeGreaterThanOrEqual(4)
   })
 
   it('flagged zettels have higher mean weight than unflagged (discrimination > 1.5x)', () => {
@@ -230,18 +262,38 @@ describe('tunnel pruning', () => {
 
 // ── 6. Token budget accuracy ──────────────────────────────────────────────────
 
-describe('token budget', () => {
-  it('maxTokenBudget 500 never returns more than 550 estimated tokens', () => {
+describe('token budget (issue #2)', () => {
+  it('never exceeds the budget at any tier — output is measured, not estimated', () => {
     const result = compress(DOC_LARGE)
-    const out = injectContext(result, { maxTokenBudget: 500 })
-    expect(estimateTokens(out)).toBeLessThanOrEqual(550)
+    for (const budget of [100, 300, 500, 1000]) {
+      const out = injectContext(result, { maxTokenBudget: budget })
+      expect(estimateTokens(out)).toBeLessThanOrEqual(budget)
+    }
   })
 
-  it('maxTokenBudget 200 never returns more than 250 estimated tokens', () => {
-    // Budget is approximate (~15 tokens/zettel estimate) — allow 25% overhead
+  it('uses most of the budget — within 35% of the ceiling when content is available', () => {
     const result = compress(DOC_LARGE)
-    const out = injectContext(result, { maxTokenBudget: 200 })
-    expect(estimateTokens(out)).toBeLessThanOrEqual(250)
+    for (const budget of [300, 500, 1000]) {
+      const out = injectContext(result, { maxTokenBudget: budget })
+      expect(estimateTokens(out)).toBeGreaterThanOrEqual(budget * 0.65)
+    }
+  })
+
+  it('budget applies to markdown and json formats too', () => {
+    const result = compress(DOC_LARGE)
+    for (const format of ['markdown', 'json'] as const) {
+      const out = injectContext(result, { maxTokenBudget: 300, format })
+      expect(estimateTokens(out)).toBeLessThanOrEqual(300)
+    }
+  })
+
+  it('keeps the highest-weight zettels when budget forces selection', () => {
+    const result = compress(DOC_LARGE)
+    const out = injectContext(result, { maxTokenBudget: 300, format: 'json' })
+    const kept: number[] = JSON.parse(out).zettels.map((z: { weight: number }) => z.weight)
+    const all = [...result.zettels.map((z) => z.weight)].sort((a, b) => b - a)
+    const expectedTop = all.slice(0, kept.length)
+    expect([...kept].sort((a, b) => b - a)).toEqual(expectedTop)
   })
 
   it('smaller budget always produces fewer or equal tokens than larger budget', () => {
@@ -249,6 +301,17 @@ describe('token budget', () => {
     const out300 = estimateTokens(injectContext(result, { maxTokenBudget: 300 }))
     const out600 = estimateTokens(injectContext(result, { maxTokenBudget: 600 }))
     expect(out300).toBeLessThanOrEqual(out600)
+  })
+
+  it('only emits tunnels whose both endpoints are selected', () => {
+    const result = compress(DOC_LARGE)
+    const out = injectContext(result, { maxZettels: 5, format: 'json' })
+    const parsed = JSON.parse(out)
+    const ids = new Set(parsed.zettels.map((z: { id: string }) => z.id))
+    for (const t of parsed.tunnels) {
+      expect(ids.has(t.from)).toBe(true)
+      expect(ids.has(t.to)).toBe(true)
+    }
   })
 })
 

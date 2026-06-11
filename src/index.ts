@@ -7,7 +7,45 @@ import { detectFlags } from './flag-detector.js'
 import { buildTunnels } from './tunnel-builder.js'
 import { encode, decode } from './encoder.js'
 import { wakeUp, topZettels } from './layer1.js'
-import type { CompressResult, CompressOptions, InjectOptions } from './types.js'
+import type { CompressResult, CompressOptions, InjectOptions, Zettel, Tunnel } from './types.js'
+
+/**
+ * Rank-based softmax weight normalization, in place. Weights are relative
+ * within one result: ranks (not raw magnitudes) are softmaxed and min-max
+ * mapped to [0, 1] so scores spread across the full range regardless of raw
+ * clustering. Ties in raw weight share a midrank, so equal raw scores always
+ * produce equal normalized weights — input order never influences ranking.
+ */
+export function normalizeWeights(zettels: Zettel[], temperature = 0.5): void {
+  const n = zettels.length
+  if (n <= 1) return
+
+  const order = zettels.map((z, i) => ({ i, w: z.weight })).sort((a, b) => a.w - b.w)
+  const midrank = new Array<number>(n)
+  let k = 0
+  while (k < n) {
+    let j = k
+    while (j + 1 < n && order[j + 1]!.w === order[k]!.w) j++
+    const avg = (k + j) / 2
+    for (let t = k; t <= j; t++) midrank[order[t]!.i] = avg
+    k = j + 1
+  }
+
+  // Normalize rank to [0, 1] before dividing by T so behavior is scale-independent of n
+  const scaled = midrank.map((r) => (r ?? 0) / (n - 1) / temperature)
+  const maxScaled = Math.max(...scaled)
+  const exps = scaled.map((s) => Math.exp(s - maxScaled))
+  const sumExps = exps.reduce((a, v) => a + v, 0)
+  const softmax = exps.map((e) => e / sumExps)
+
+  const sMin = Math.min(...softmax)
+  const sMax = Math.max(...softmax)
+  for (let i = 0; i < n; i++) {
+    const normalized = sMax > sMin ? (softmax[i]! - sMin) / (sMax - sMin) : 1.0
+    const z = zettels[i]
+    if (z) z.weight = Math.round(normalized * 100) / 100
+  }
+}
 
 export function compress(text: string, options?: CompressOptions): CompressResult {
   const chunks = chunkText(text, options)
@@ -48,38 +86,7 @@ export function compress(text: string, options?: CompressOptions): CompressResul
     }
   })
 
-  // Softmax temperature normalization with rank-based input (arXiv 2025)
-  // When raw weights cluster near 1.0, softmax on raw values can't differentiate them.
-  // Solution: softmax over rank positions (0..n-1) scaled by temperature, then min-max
-  // map back to [0,1]. Guarantees spread regardless of raw score clustering.
-  const T = options?.temperature ?? 0.5
-  if (zettels.length > 1) {
-    const n = zettels.length
-    // Get indices sorted by raw weight ascending (rank 0 = lowest raw weight)
-    const sortedIdx = zettels
-      .map((z, i) => ({ i, w: z.weight }))
-      .sort((a, b) => a.w - b.w)
-      .map((x) => x.i)
-
-    const rankOf = new Array<number>(n)
-    sortedIdx.forEach((originalIdx, rank) => { rankOf[originalIdx] = rank })
-
-    // Normalize rank to [0, 1] before dividing by T so behavior is scale-independent of n
-    const scaled = rankOf.map((r) => r / (n - 1) / T)
-    const maxScaled = Math.max(...scaled)
-    const exps = scaled.map((s) => Math.exp(s - maxScaled))
-    const sumExps = exps.reduce((a, v) => a + v, 0)
-    const softmax = exps.map((e) => e / sumExps)
-
-    // Min-max normalize softmax outputs to [0, 1]
-    const sMin = Math.min(...softmax)
-    const sMax = Math.max(...softmax)
-    for (let i = 0; i < n; i++) {
-      const normalized = sMax > sMin ? (softmax[i]! - sMin) / (sMax - sMin) : 1.0
-      const z = zettels[i]
-      if (z) z.weight = Math.round(normalized * 100) / 100
-    }
-  }
+  normalizeWeights(zettels, options?.temperature)
 
   const tunnels = buildTunnels(
     zettels,
@@ -133,6 +140,10 @@ export function mergeResults(results: CompressResult[]): CompressResult {
     r.zettels.map((z) => ({ ...z, id: String(globalIndex++).padStart(3, '0') })),
   )
 
+  // Per-result weights are on independent scales (single-chunk results carry
+  // raw scores) — re-normalize over the merged set so filtering is consistent
+  normalizeWeights(mergedZettels)
+
   const mergedTunnels = buildTunnels(mergedZettels, mergedIndex)
 
   const totalInput = results.reduce((sum, r) => sum + (r.meta?.inputLength ?? 0), 0)
@@ -143,6 +154,55 @@ export function mergeResults(results: CompressResult[]): CompressResult {
     entityIndex: mergedIndex,
     meta: { inputLength: totalInput, chunkCount: mergedZettels.length },
   }
+}
+
+/** Whitespace-word token estimate — the same measure the budget enforces. */
+export function estimateTokens(text: string): number {
+  const words = text.split(/\s+/).filter(Boolean).length
+  return Math.ceil(words * 1.3)
+}
+
+function markdownLine(z: Zettel): string {
+  const emotionStr = z.emotions.length > 0 ? z.emotions.join(', ') : 'none'
+  const flagStr = z.flags.length > 0 ? z.flags.join(', ') : 'none'
+  return `**[${z.id}]** ${z.quote} *(${emotionStr} | ${flagStr} | weight: ${z.weight})*`
+}
+
+function tunnelsAmong(tunnels: Tunnel[], zettels: Zettel[]): Tunnel[] {
+  const ids = new Set(zettels.map((z) => z.id))
+  return tunnels.filter((t) => ids.has(t.from) && ids.has(t.to))
+}
+
+function renderOutput(
+  result: CompressResult,
+  zettels: Zettel[],
+  format: 'aaak' | 'json' | 'markdown',
+): string {
+  const tunnels = tunnelsAmong(result.tunnels, zettels)
+  if (format === 'json') return JSON.stringify({ zettels, tunnels }, null, 2)
+  if (format === 'markdown') return zettels.map(markdownLine).join('\n\n')
+  return encode({ ...result, zettels, tunnels })
+}
+
+// Greedy budget fit: zettels enter in weight order, each measured as it would
+// actually render, and the budget is never exceeded. Tunnel lines (aaak/json)
+// are added last with whatever budget remains.
+function fitToBudget(
+  result: CompressResult,
+  candidates: Zettel[],
+  format: 'aaak' | 'json' | 'markdown',
+  budget: number,
+): Zettel[] {
+  const sorted = [...candidates].sort((a, b) => b.weight - a.weight)
+  const selected: Zettel[] = []
+
+  for (const z of sorted) {
+    const attempt = renderOutput(result, [...selected, z], format)
+    if (estimateTokens(attempt) > budget) break
+    selected.push(z)
+  }
+
+  return selected
 }
 
 export function injectContext(result: CompressResult, options?: InjectOptions): string {
@@ -162,30 +222,14 @@ export function injectContext(result: CompressResult, options?: InjectOptions): 
     zettels = [...zettels].sort((a, b) => b.weight - a.weight).slice(0, options.maxZettels)
   }
 
-  // Token budget: ~15 tokens per zettel (Structured Distillation, arXiv 2026)
-  if (options?.maxTokenBudget !== undefined) {
-    const TOKENS_PER_ZETTEL = 15
-    const limit = Math.floor(options.maxTokenBudget / TOKENS_PER_ZETTEL)
-    zettels = zettels.slice(0, limit)
-  }
-
   const format = options?.format ?? 'aaak'
 
-  if (format === 'json') {
-    return JSON.stringify({ zettels, tunnels: result.tunnels }, null, 2)
+  // Budget is the final gate: measure real rendered output, never exceed
+  if (options?.maxTokenBudget !== undefined) {
+    zettels = fitToBudget(result, zettels, format, options.maxTokenBudget)
   }
 
-  if (format === 'markdown') {
-    return zettels
-      .map((z) => {
-        const emotionStr = z.emotions.length > 0 ? z.emotions.join(', ') : 'none'
-        const flagStr = z.flags.length > 0 ? z.flags.join(', ') : 'none'
-        return `**[${z.id}]** ${z.quote} *(${emotionStr} | ${flagStr} | weight: ${z.weight})*`
-      })
-      .join('\n\n')
-  }
-
-  return encode({ ...result, zettels })
+  return renderOutput(result, zettels, format)
 }
 
 export { encode, decode } from './encoder.js'

@@ -1,7 +1,7 @@
 import type { CompressResult, Zettel, Tunnel, EntityIndex } from './types.js'
 import type { EmotionName, FlagName } from './types.js'
 
-function zettelToLine(z: Zettel, entityIndex: EntityIndex): string {
+export function encodeZettelLine(z: Zettel, entityIndex: EntityIndex): string {
   const codes = z.entities
     .map((name) => entityIndex.nameToCode[name] ?? name.slice(0, 3).toUpperCase())
     .join('+')
@@ -17,7 +17,7 @@ function zettelToLine(z: Zettel, entityIndex: EntityIndex): string {
   return `${z.id}:${codes}|${topics}|"${safeQuote}"|${weight}|${emotions}|${flags}`
 }
 
-function tunnelToLine(t: Tunnel): string {
+export function encodeTunnelLine(t: Tunnel): string {
   return `T:${t.from}<->${t.to}|${t.label}`
 }
 
@@ -42,8 +42,8 @@ export function encode(result: CompressResult): string {
   const header = `FILE:${count}|${topCodes}|${date}|${title}`
 
   const lines: string[] = [header]
-  for (const z of result.zettels) lines.push(zettelToLine(z, result.entityIndex))
-  for (const t of result.tunnels) lines.push(tunnelToLine(t))
+  for (const z of result.zettels) lines.push(encodeZettelLine(z, result.entityIndex))
+  for (const t of result.tunnels) lines.push(encodeTunnelLine(t))
 
   return lines.join('\n')
 }
