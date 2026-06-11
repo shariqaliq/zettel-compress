@@ -10,8 +10,11 @@ function zettelToLine(z: Zettel, entityIndex: EntityIndex): string {
   const weight = z.weight.toFixed(2)
   const emotions = z.emotions.join('+')
   const flags = z.flags.join('+')
+  // AAAK is line-oriented — a newline inside the quote would split the zettel
+  // across lines and the decoder would silently drop it
+  const safeQuote = z.quote.replace(/[\r\n]+/g, ' ')
 
-  return `${z.id}:${codes}|${topics}|"${z.quote}"|${weight}|${emotions}|${flags}`
+  return `${z.id}:${codes}|${topics}|"${safeQuote}"|${weight}|${emotions}|${flags}`
 }
 
 function tunnelToLine(t: Tunnel): string {

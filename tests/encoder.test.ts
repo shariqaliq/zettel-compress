@@ -114,4 +114,20 @@ describe('decode', () => {
     const decoded = decode(encode(noTunnels))
     expect(decoded.tunnels).toHaveLength(0)
   })
+
+  it('preserves zettel count when quotes contain newlines', () => {
+    const multiline: CompressResult = {
+      ...sampleResult,
+      zettels: sampleResult.zettels.map((z) => ({
+        ...z,
+        quote: 'User: can we fix auth?\nAssistant: yes,\r\nwe decided to rotate tokens.',
+      })),
+      tunnels: [],
+    }
+    const decoded = decode(encode(multiline))
+    expect(decoded.zettels).toHaveLength(multiline.zettels.length)
+    expect(decoded.zettels[0]?.quote).toBe(
+      'User: can we fix auth? Assistant: yes, we decided to rotate tokens.',
+    )
+  })
 })
