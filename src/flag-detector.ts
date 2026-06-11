@@ -18,6 +18,19 @@ const NEGATION_WORDS = new Set([
 
 const IMPLICIT_NEGATORS = ['failed to', 'unable to', 'refused to', 'avoided', 'lack of', 'free from']
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Word-boundary matching — substring matching false-fires ('api' in "rapid",
+// 'class' in "classic"), so keywords are compiled once into \b-anchored patterns
+const FLAG_PATTERNS = Object.fromEntries(
+  (Object.entries(FLAG_KEYWORDS) as [FlagName, string[]][]).map(([flag, keywords]) => [
+    flag,
+    new RegExp(`\\b(?:${keywords.map(escapeRegExp).join('|')})\\b`, 'g'),
+  ]),
+) as Record<FlagName, RegExp>
+
 function isNegated(lower: string, kwIndex: number): boolean {
   const window = lower.slice(Math.max(0, kwIndex - 50), kwIndex)
   const tail = window.trim().split(/\s+/).slice(-6)
@@ -33,10 +46,11 @@ export function detectFlags(text: string): FlagName[] {
   const result: FlagName[] = []
 
   for (const flag of FLAG_ORDER) {
-    const keywords = FLAG_KEYWORDS[flag]
-    for (const kw of keywords) {
-      const idx = lower.indexOf(kw)
-      if (idx !== -1 && !isNegated(lower, idx)) {
+    const pattern = FLAG_PATTERNS[flag]
+    pattern.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(lower)) !== null) {
+      if (!isNegated(lower, match.index)) {
         result.push(flag)
         break
       }

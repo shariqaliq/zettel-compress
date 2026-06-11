@@ -44,6 +44,19 @@ const NEGATION_WORDS = new Set([
 // Implicit multi-word negators (arXiv 2025 negation taxonomy)
 const IMPLICIT_NEGATORS = ['failed to', 'unable to', 'refused to', 'avoided', 'lack of', 'free from']
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Word-boundary matching — substring matching false-fires ('miss' in "mission",
+// 'hate' in "chateau"), so keywords are compiled once into \b-anchored patterns
+const EMOTION_PATTERNS = Object.fromEntries(
+  (Object.entries(EMOTION_KEYWORDS) as [EmotionName, string[]][]).map(([emotion, keywords]) => [
+    emotion,
+    new RegExp(`\\b(?:${keywords.map(escapeRegExp).join('|')})\\b`, 'g'),
+  ]),
+) as Record<EmotionName, RegExp>
+
 function isNegated(lower: string, kwIndex: number): boolean {
   const window = lower.slice(Math.max(0, kwIndex - 50), kwIndex)
   const windowWords = window.trim().split(/\s+/)
@@ -59,10 +72,11 @@ export function detectEmotions(text: string): EmotionName[] {
   const lower = text.toLowerCase()
   const result: EmotionName[] = []
 
-  for (const [emotion, keywords] of Object.entries(EMOTION_KEYWORDS) as [EmotionName, string[]][]) {
-    for (const kw of keywords) {
-      const idx = lower.indexOf(kw)
-      if (idx !== -1 && !isNegated(lower, idx)) {
+  for (const [emotion, pattern] of Object.entries(EMOTION_PATTERNS) as [EmotionName, RegExp][]) {
+    pattern.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(lower)) !== null) {
+      if (!isNegated(lower, match.index)) {
         result.push(emotion)
         break
       }
