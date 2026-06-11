@@ -11,7 +11,19 @@ function splitSentences(text: string): string[] {
     .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e)\./gi, (m) => m.replace('.', '\x00'))
     .replace(/\b([A-Z]{1,2})\./g, (m) => m.replace('.', '\x00'))
 
-  const parts = cleaned.split(/(?<=[.!?])\s+(?=[A-Z"'])/)
+  let parts = cleaned.split(/(?<=[.!?])\s+(?=[A-Z"'])/)
+
+  // Fallbacks for informal text: the primary split requires the next sentence
+  // to start with a capital letter, which chat logs and lowercase prose never
+  // satisfy — without these the entire chunk becomes one "sentence"
+  if (parts.length <= 1) {
+    const byLine = cleaned.split(/\n+/).map((s) => s.trim()).filter((s) => s.length > 10)
+    if (byLine.length > 1) parts = byLine
+  }
+  if (parts.length <= 1) {
+    const byPunct = cleaned.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 10)
+    if (byPunct.length > 1) parts = byPunct
+  }
 
   for (const part of parts) {
     const restored = part.replace(/\x00/g, '.').trim()

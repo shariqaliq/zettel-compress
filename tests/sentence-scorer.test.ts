@@ -49,3 +49,41 @@ describe('selectKeySentence', () => {
     expect(result.length).toBeLessThanOrEqual(120)
   })
 })
+
+describe('selectKeySentence — casual and lowercase text (issue #3)', () => {
+  it('picks a single line from lowercase newline-separated chat text', () => {
+    const text = [
+      'ok so basically we had a call and things got weird.',
+      'like nobody said anything useful honestly.',
+      'we should probably fix the auth thing at some point.',
+    ].join('\n')
+    const result = selectKeySentence(text)
+    // must NOT be the whole chunk
+    expect(result).not.toContain('\n')
+    expect(result.length).toBeLessThan(text.length)
+  })
+
+  it('picks the decision line from lowercase chat', () => {
+    const text = [
+      'hey what did we land on yesterday',
+      'we decided to rotate the tokens every hour going forward.',
+      'cool that works for me',
+    ].join('\n')
+    const result = selectKeySentence(text)
+    expect(result.toLowerCase()).toContain('decided')
+  })
+
+  it('splits lowercase prose on punctuation without capitals', () => {
+    const text =
+      'the meeting ran long and nothing was clear. we agreed to ship friday anyway. someone mentioned the logs were noisy.'
+    const result = selectKeySentence(text)
+    // the quote must be one sentence, not the whole chunk
+    expect(result.length).toBeLessThan(text.length)
+    expect(result.split('.').filter((s) => s.trim().length > 0)).toHaveLength(1)
+  })
+
+  it('still returns the full text when there is genuinely one sentence', () => {
+    const text = 'a single lowercase sentence with no boundaries at all here'
+    expect(selectKeySentence(text)).toBe(text)
+  })
+})
