@@ -1,6 +1,6 @@
 {
   "name": "zettel-compress",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Deterministic LLM-free text compression into structured zettel memory units with emotion weights, entity codes, and tunnel links",
   "keywords": [
     "llm",
@@ -56,15 +56,15 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build && npm run test && npm run typecheck"
+    "check:zerodep": "node -e \"const d = require('./package.json').dependencies || {}; const k = Object.keys(d); if (k.length) { console.error('Zero-dependency check failed — runtime dependencies found: ' + k.join(', ')); process.exit(1) }\"",
+    "prepublishOnly": "npm run check:zerodep && npm run build && npm run test && npm run typecheck"
   },
   "devDependencies": {
+    "@types/node": "^25.9.3",
     "@vitest/coverage-v8": "^2.0.0",
+    "node-summarizer": "^1.0.7",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
-  },
-  "dependencies": {
-    "node-summarizer": "^1.0.7"
   }
 }
