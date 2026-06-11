@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { wakeUp, topZettels } from '../src/layer1.js'
 import type { CompressResult } from '../src/types.js'
 
-const makeResult = (overrides: Partial<CompressResult[' zettels'][number]>[] = []): CompressResult => ({
+const makeResult = (overrides: Partial<CompressResult['zettels'][number]>[] = []): CompressResult => ({
   zettels: overrides.map((o, i) => ({
     id: String(i + 1).padStart(3, '0'),
     entities: [],

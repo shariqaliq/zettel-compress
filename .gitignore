@@ -3,3 +3,8 @@ dist/
 coverage/
 *.tgz
 .env
+
+# internal notes / local fixtures — not for the public repo
+ISSUES.md
+ROADMAP_TO_REVOLUTIONARY.md
+test-conversation.txt
