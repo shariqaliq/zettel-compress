@@ -78,7 +78,7 @@ Decision: We decided to go with rotating short-lived tokens plus a Redis-backed 
 
 Text is chunked on paragraph boundaries, then each chunk becomes a **zettel** — an atomic memory unit containing:
 
-- **entities** — proper nouns detected by frequency (auto-coded to 3-letter codes like `ALC`, `BOB`)
+- **entities** — proper nouns detected by capitalization evidence (sentence-start noise like `Added`, `Please` is filtered out; chat speaker labels are kept), auto-coded to 3-letter codes like `ALC`, `BOB`
 - **topics** — key subject terms with CamelCase/ALL-CAPS boosts
 - **quote** — the most information-dense sentence, scored by TextRank centrality blended with decision-word density
 - **weight** — 0–1 importance score, rank-normalized via softmax so scores are always spread across the full range
@@ -178,7 +178,7 @@ T:001<->002|ALC+BOB
 
 ### `decode(aaak): CompressResult`
 
-Parses an AAAK string back to a `CompressResult`. Handles quotes containing `|` characters safely.
+Parses an AAAK string back to a `CompressResult`. Handles quotes containing `|` characters safely. Quotes are newline-normalized at encode time (AAAK is line-oriented), so every zettel survives the round-trip — including multi-line conversation quotes.
 
 ---
 
