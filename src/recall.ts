@@ -1,0 +1,138 @@
+import type { CompressResult, Zettel } from './types.js'
+
+export interface RecallOptions {
+  /** Maximum zettels returned (default 5) */
+  topK?: number
+  /**
+   * Expand results over the tunnel graph with personalized PageRank, so
+   * zettels associated with a direct hit surface even when they share no
+   * query terms (default true).
+   */
+  hops?: boolean
+}
+
+const STOP = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'of', 'in', 'on', 'at', 'to', 'for',
+  'with', 'is', 'are', 'was', 'were', 'be', 'been', 'it', 'this', 'that',
+  'these', 'those', 'we', 'you', 'i', 'they', 'he', 'she', 'about', 'what',
+  'did', 'do', 'does', 'our', 'your', 'their', 'his', 'her', 'have', 'has',
+  'had', 'will', 'would', 'can', 'could', 'should', 'how', 'when', 'where',
+])
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9_]+/)
+    .filter((t) => t.length >= 2 && !STOP.has(t))
+}
+
+function zettelTokens(z: Zettel): string[] {
+  return tokenize(`${z.quote} ${z.topics.join(' ')} ${z.entities.join(' ')}`)
+}
+
+// Okapi BM25 with the standard k1=1.2, b=0.75
+function bm25Scores(docs: string[][], qTokens: string[]): number[] {
+  const N = docs.length
+  const avgLen = docs.reduce((s, d) => s + d.length, 0) / N || 1
+  const df = new Map<string, number>()
+  for (const d of docs) {
+    for (const t of new Set(d)) df.set(t, (df.get(t) ?? 0) + 1)
+  }
+
+  return docs.map((d) => {
+    const tf = new Map<string, number>()
+    for (const t of d) tf.set(t, (tf.get(t) ?? 0) + 1)
+    let score = 0
+    for (const q of qTokens) {
+      const f = tf.get(q) ?? 0
+      if (f === 0) continue
+      const n = df.get(q) ?? 0
+      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5))
+      score += (idf * f * 2.2) / (f + 1.2 * (0.25 + (0.75 * d.length) / avgLen))
+    }
+    return score
+  })
+}
+
+// Personalized PageRank over the (undirected) tunnel graph, teleporting to
+// the BM25 hit distribution. Power iteration; the graph is capped at
+// tunnelTopK edges per zettel, so 20 iterations converge comfortably.
+function personalizedPageRank(
+  zettels: Zettel[],
+  result: CompressResult,
+  seed: number[],
+): number[] {
+  const n = zettels.length
+  const idToIdx = new Map(zettels.map((z, i) => [z.id, i]))
+  const adj: number[][] = Array.from({ length: n }, () => [])
+  for (const t of result.tunnels) {
+    const a = idToIdx.get(t.from)
+    const b = idToIdx.get(t.to)
+    if (a === undefined || b === undefined) continue
+    adj[a]!.push(b)
+    adj[b]!.push(a)
+  }
+
+  const seedSum = seed.reduce((a, v) => a + v, 0)
+  if (seedSum === 0) return seed
+  const p = seed.map((s) => s / seedSum)
+
+  const ALPHA = 0.85
+  let rank = [...p]
+  for (let iter = 0; iter < 20; iter++) {
+    const next = p.map((pi) => (1 - ALPHA) * pi)
+    for (let i = 0; i < n; i++) {
+      const out = adj[i]!.length
+      if (out === 0) {
+        // dangling mass teleports back to the personalization vector
+        for (let j = 0; j < n; j++) next[j]! += ALPHA * rank[i]! * p[j]!
+      } else {
+        const share = (ALPHA * rank[i]!) / out
+        for (const j of adj[i]!) next[j]! += share
+      }
+    }
+    rank = next
+  }
+  return rank
+}
+
+/**
+ * Query-time retrieval over a compressed result: BM25 over each zettel's
+ * quote, topics, and entities, optionally blended with personalized PageRank
+ * over the tunnel graph for one-hop associative recall. Deterministic; ties
+ * break by zettel id.
+ */
+export function recall(
+  result: CompressResult,
+  query: string,
+  options?: RecallOptions,
+): Zettel[] {
+  const topK = options?.topK ?? 5
+  const hops = options?.hops ?? true
+  const zettels = result.zettels
+  if (zettels.length === 0 || topK <= 0) return []
+
+  const qTokens = tokenize(query)
+  if (qTokens.length === 0) return []
+
+  const docs = zettels.map(zettelTokens)
+  const bm25 = bm25Scores(docs, qTokens)
+  const maxB = Math.max(...bm25)
+  if (maxB <= 0) return []
+  const bNorm = bm25.map((s) => s / maxB)
+
+  let final = bNorm
+  if (hops && result.tunnels.length > 0) {
+    const ppr = personalizedPageRank(zettels, result, bNorm)
+    const maxR = Math.max(...ppr)
+    const rNorm = maxR > 0 ? ppr.map((r) => r / maxR) : ppr
+    final = bNorm.map((s, i) => 0.6 * s + 0.4 * (rNorm[i] ?? 0))
+  }
+
+  return zettels
+    .map((z, i) => ({ z, s: final[i] ?? 0 }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s || a.z.id.localeCompare(b.z.id))
+    .slice(0, topK)
+    .map((x) => x.z)
+}
