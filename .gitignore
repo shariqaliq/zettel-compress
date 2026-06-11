@@ -8,3 +8,6 @@ coverage/
 ISSUES.md
 ROADMAP_TO_REVOLUTIONARY.md
 test-conversation.txt
+
+# benchmark datasets (downloaded, large)
+bench/data/

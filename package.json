@@ -56,6 +56,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "bench": "node bench/fetch-data.mjs && tsx bench/run.ts",
     "check:zerodep": "node -e \"const d = require('./package.json').dependencies || {}; const k = Object.keys(d); if (k.length) { console.error('Zero-dependency check failed — runtime dependencies found: ' + k.join(', ')); process.exit(1) }\"",
     "prepublishOnly": "npm run check:zerodep && npm run build && npm run test && npm run typecheck"
   },
@@ -64,6 +65,7 @@
     "@vitest/coverage-v8": "^2.0.0",
     "node-summarizer": "^1.0.7",
     "tsup": "^8.0.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   }
