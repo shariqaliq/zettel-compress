@@ -7,7 +7,14 @@ import { detectFlags } from './flag-detector.js'
 import { buildTunnels } from './tunnel-builder.js'
 import { encode, decode } from './encoder.js'
 import { wakeUp, topZettels } from './layer1.js'
-import type { CompressResult, CompressOptions, InjectOptions, Zettel, Tunnel } from './types.js'
+import type {
+  CompressResult,
+  CompressOptions,
+  InjectOptions,
+  Zettel,
+  Tunnel,
+  FlagName,
+} from './types.js'
 
 /**
  * Rank-based softmax weight normalization, in place. Weights are relative
@@ -156,6 +163,81 @@ export function mergeResults(results: CompressResult[]): CompressResult {
   }
 }
 
+// Weight and signal density correlate but are not identical: a DECISION
+// zettel ranked 11th by pure weight is exactly the memory the user asks for.
+// Selection ranks by a combined score so flagged signals reliably surface.
+const SIGNAL_FLAGS: FlagName[] = ['DECISION', 'ORIGIN', 'CORE']
+
+function selectionScore(z: Zettel): number {
+  const bonus = z.flags.some((f) => SIGNAL_FLAGS.includes(f)) ? 1 : 0
+  return 0.7 * z.weight + 0.3 * bonus
+}
+
+function zettelSim(a: Zettel, b: Zettel): number {
+  const setA = new Set([...a.topics, ...a.entities])
+  const setB = new Set([...b.topics, ...b.entities])
+  if (setA.size === 0 || setB.size === 0) return 0
+  let inter = 0
+  for (const t of setA) if (setB.has(t)) inter++
+  const union = setA.size + setB.size - inter
+  return union > 0 ? inter / union : 0
+}
+
+function selectTop(zettels: Zettel[], n: number, mode: 'weight' | 'mmr'): Zettel[] {
+  const byScore = [...zettels].sort(
+    (a, b) => selectionScore(b) - selectionScore(a) || a.id.localeCompare(b.id),
+  )
+  if (mode !== 'mmr' || byScore.length <= n) return byScore.slice(0, n)
+
+  // Maximal marginal relevance (Carbonell & Goldstein 1998): each pick trades
+  // relevance against the strongest similarity to anything already selected
+  const LAMBDA = 0.7
+  const selected: Zettel[] = []
+  const pool = [...byScore]
+  while (selected.length < n && pool.length > 0) {
+    let bestIdx = 0
+    let bestVal = -Infinity
+    for (let i = 0; i < pool.length; i++) {
+      const z = pool[i]!
+      const maxSim = selected.length > 0 ? Math.max(...selected.map((s) => zettelSim(z, s))) : 0
+      const val = LAMBDA * selectionScore(z) - (1 - LAMBDA) * maxSim
+      if (val > bestVal) {
+        bestVal = val
+        bestIdx = i
+      }
+    }
+    selected.push(pool.splice(bestIdx, 1)[0]!)
+  }
+  return selected
+}
+
+function applyGuarantees(selected: Zettel[], candidates: Zettel[], flags: FlagName[]): Zettel[] {
+  const out = [...selected]
+  for (const flag of flags) {
+    if (out.some((z) => z.flags.includes(flag))) continue
+    const best = candidates
+      .filter((z) => z.flags.includes(flag) && !out.includes(z))
+      .sort((a, b) => b.weight - a.weight || a.id.localeCompare(b.id))[0]
+    if (!best) continue
+
+    // replace the weakest selected zettel that is not itself guaranteed
+    let victim = -1
+    let victimScore = Infinity
+    for (let i = 0; i < out.length; i++) {
+      const z = out[i]!
+      if (flags.some((f) => z.flags.includes(f))) continue
+      const s = selectionScore(z)
+      if (s < victimScore) {
+        victimScore = s
+        victim = i
+      }
+    }
+    if (victim >= 0) out[victim] = best
+    else out.push(best)
+  }
+  return out
+}
+
 /** Whitespace-word token estimate — the same measure the budget enforces. */
 export function estimateTokens(text: string): number {
   const words = text.split(/\s+/).filter(Boolean).length
@@ -193,7 +275,9 @@ function fitToBudget(
   format: 'aaak' | 'json' | 'markdown',
   budget: number,
 ): Zettel[] {
-  const sorted = [...candidates].sort((a, b) => b.weight - a.weight)
+  const sorted = [...candidates].sort(
+    (a, b) => selectionScore(b) - selectionScore(a) || a.id.localeCompare(b.id),
+  )
   const selected: Zettel[] = []
 
   for (const z of sorted) {
@@ -219,7 +303,13 @@ export function injectContext(result: CompressResult, options?: InjectOptions): 
   }
 
   if (options?.maxZettels !== undefined) {
-    zettels = [...zettels].sort((a, b) => b.weight - a.weight).slice(0, options.maxZettels)
+    zettels = selectTop(zettels, options.maxZettels, options.selection ?? 'weight')
+  }
+
+  // Guarantees draw from the full result, so a flagged zettel excluded by
+  // minWeight or ranking still makes it in
+  if (options?.guaranteeFlags !== undefined && options.guaranteeFlags.length > 0) {
+    zettels = applyGuarantees(zettels, result.zettels, options.guaranteeFlags)
   }
 
   const format = options?.format ?? 'aaak'

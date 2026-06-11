@@ -287,13 +287,16 @@ describe('token budget (issue #2)', () => {
     }
   })
 
-  it('keeps the highest-weight zettels when budget forces selection', () => {
+  it('keeps the top-ranked zettels when budget forces selection', () => {
+    // ranking = 0.7·weight + 0.3·signal-flag bonus (DECISION/ORIGIN/CORE)
+    const score = (z: { weight: number; flags: string[] }) =>
+      0.7 * z.weight + (z.flags.some((f) => ['DECISION', 'ORIGIN', 'CORE'].includes(f)) ? 0.3 : 0)
     const result = compress(DOC_LARGE)
     const out = injectContext(result, { maxTokenBudget: 300, format: 'json' })
-    const kept: number[] = JSON.parse(out).zettels.map((z: { weight: number }) => z.weight)
-    const all = [...result.zettels.map((z) => z.weight)].sort((a, b) => b - a)
-    const expectedTop = all.slice(0, kept.length)
-    expect([...kept].sort((a, b) => b - a)).toEqual(expectedTop)
+    const kept = JSON.parse(out).zettels as { weight: number; flags: string[] }[]
+    const allScores = result.zettels.map(score).sort((a, b) => b - a)
+    const expectedTop = allScores.slice(0, kept.length)
+    expect(kept.map(score).sort((a, b) => b - a)).toEqual(expectedTop)
   })
 
   it('smaller budget always produces fewer or equal tokens than larger budget', () => {

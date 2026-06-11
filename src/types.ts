@@ -92,8 +92,21 @@ export interface InjectOptions {
   minWeight?: number
   flags?: FlagName[]
   format?: 'aaak' | 'json' | 'markdown'
-  /** Hard token budget — stops adding zettels once estimated token count is reached */
+  /** Hard token budget — output is measured as rendered and never exceeds it */
   maxTokenBudget?: number
+  /**
+   * Selection strategy when maxZettels limits the set.
+   * 'weight' (default): rank by 0.7·weight + 0.3·signal-flag bonus.
+   * 'mmr': maximal marginal relevance — the same ranking traded against
+   * similarity to already-selected zettels, so near-duplicates don't crowd
+   * out distinct signals.
+   */
+  selection?: 'weight' | 'mmr'
+  /**
+   * Always include at least one zettel per listed flag if one exists in the
+   * result — even if filters or ranking would have excluded it.
+   */
+  guaranteeFlags?: FlagName[]
 }
 
 export interface TextChunk {
