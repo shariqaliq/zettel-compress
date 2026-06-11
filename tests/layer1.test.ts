@@ -42,9 +42,50 @@ function makeR(zettels: ZettelOverride[]): CompressResult {
 }
 
 describe('wakeUp', () => {
-  it('returns empty string when no zettels meet threshold', () => {
-    const result = makeR([{ weight: 0.3 }, { weight: 0.5 }, { weight: 0.7 }])
-    expect(wakeUp(result)).toBe('')
+  it('returns the top-weight zettel even when all weights are low (issue #4)', () => {
+    const result = makeR([
+      { weight: 0.3, quote: 'Low one.' },
+      { weight: 0.5, quote: 'Mid one.' },
+      { weight: 0.7, quote: 'Top one.' },
+    ])
+    const output = wakeUp(result)
+    expect(output).toContain('Top one.')
+    expect(output).not.toContain('Low one.')
+  })
+
+  it('returns empty string only for empty results', () => {
+    expect(wakeUp(makeR([]))).toBe('')
+  })
+
+  it('never returns empty on non-empty input, regardless of weights (issue #4)', () => {
+    for (const w of [0.0, 0.1, 0.5, 0.84]) {
+      const result = makeR([{ weight: w, quote: `Weighted ${w}.` }])
+      expect(wakeUp(result)).not.toBe('')
+    }
+  })
+
+  it('scales output with document size — large doc returns 1 to 5 quotes (issue #4)', () => {
+    const result = makeR(
+      Array.from({ length: 65 }, (_, i) => ({ weight: i / 64, quote: `Moment ${i} happened.` })),
+    )
+    const output = wakeUp(result)
+    expect(output.length).toBeGreaterThan(0)
+    const included = result.zettels.filter((z) => output.includes(z.quote)).length
+    expect(included).toBeGreaterThanOrEqual(1)
+    expect(included).toBeLessThanOrEqual(5)
+    // top of the ranking must be present
+    expect(output).toContain('Moment 64 happened.')
+  })
+
+  it('respects a custom topPct', () => {
+    const result = makeR(
+      Array.from({ length: 20 }, (_, i) => ({ weight: i / 19, quote: `Item ${i} occurred.` })),
+    )
+    const wide = wakeUp(result, 0.25) // ceil(20 * 0.25) = 5
+    const narrow = wakeUp(result, 0.05) // ceil(20 * 0.05) = 1
+    const count = (out: string) => result.zettels.filter((z) => out.includes(z.quote)).length
+    expect(count(narrow)).toBe(1)
+    expect(count(wide)).toBeGreaterThan(count(narrow))
   })
 
   it('includes zettel with weight >= 0.85', () => {
