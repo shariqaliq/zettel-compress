@@ -115,7 +115,7 @@ describe('decode', () => {
     expect(decoded.tunnels).toHaveLength(0)
   })
 
-  it('preserves zettel count when quotes contain newlines', () => {
+  it('preserves multi-line quotes exactly (v2 escaping)', () => {
     const multiline: CompressResult = {
       ...sampleResult,
       zettels: sampleResult.zettels.map((z) => ({
@@ -127,7 +127,83 @@ describe('decode', () => {
     const decoded = decode(encode(multiline))
     expect(decoded.zettels).toHaveLength(multiline.zettels.length)
     expect(decoded.zettels[0]?.quote).toBe(
-      'User: can we fix auth? Assistant: yes, we decided to rotate tokens.',
+      'User: can we fix auth?\nAssistant: yes,\r\nwe decided to rotate tokens.',
     )
+  })
+
+  it('recovers entity names through the E: index line (issue #7)', () => {
+    const decoded = decode(encode(sampleResult))
+    expect(decoded.zettels[0]?.entities).toEqual(['Alice', 'Bob'])
+    expect(decoded.entityIndex.codeToName['ALC']).toBe('Alice')
+    expect(decoded.entityIndex.nameToCode['Bob']).toBe('BOB')
+  })
+
+  it('preserves quotes containing double quotes and backslashes', () => {
+    const tricky: CompressResult = {
+      ...sampleResult,
+      zettels: [
+        {
+          ...sampleResult.zettels[0]!,
+          quote: 'She said "ship it\\now" and | meant it.',
+        },
+      ],
+      tunnels: [],
+    }
+    const decoded = decode(encode(tricky))
+    expect(decoded.zettels[0]?.quote).toBe('She said "ship it\\now" and | meant it.')
+  })
+
+  it('preserves snake_case topics (issue #7)', () => {
+    const tricky: CompressResult = {
+      ...sampleResult,
+      zettels: [
+        {
+          ...sampleResult.zettels[0]!,
+          topics: ['entity_index', 'snake_case', 'plain'],
+        },
+      ],
+      tunnels: [],
+    }
+    const decoded = decode(encode(tricky))
+    expect(decoded.zettels[0]?.topics).toEqual(['entity_index', 'snake_case', 'plain'])
+  })
+
+  it('still decodes legacy v1 output (no E: line, _ topics)', () => {
+    const v1 =
+      'FILE:001|ALC|2026-06-10|Legacy\n' +
+      '001:ALC|authentication_security|"We decided to use JWT tokens."|0.91|conviction|DECISION'
+    const decoded = decode(v1)
+    expect(decoded.zettels).toHaveLength(1)
+    expect(decoded.zettels[0]?.topics).toEqual(['authentication', 'security'])
+    expect(decoded.zettels[0]?.flags).toEqual(['DECISION'])
+  })
+
+  it('collects warnings for malformed lines instead of silently dropping', () => {
+    const aaak = encode(sampleResult) + '\nthis is not a valid line at all'
+    const decoded = decode(aaak)
+    expect(decoded.zettels).toHaveLength(2)
+    expect(decoded.meta?.warnings?.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('strict mode throws on malformed lines', () => {
+    const aaak = encode(sampleResult) + '\nthis is not a valid line at all'
+    expect(() => decode(aaak, { strict: true })).toThrow(/malformed/)
+  })
+
+  it('warns when header count disagrees with parsed zettels', () => {
+    const lines = encode(sampleResult).split('\n')
+    lines[0] = lines[0]!.replace('FILE:002', 'FILE:009')
+    const decoded = decode(lines.join('\n'))
+    expect(decoded.meta?.warnings?.some((w) => w.includes('declares'))).toBe(true)
+  })
+
+  it('drops unknown emotions and flags with a warning', () => {
+    const aaak =
+      'FILE:001|||x|v2\n' +
+      '001:||"A quote about the plan."|0.50|conviction+notanemotion|DECISION+NOTAFLAG'
+    const decoded = decode(aaak)
+    expect(decoded.zettels[0]?.emotions).toEqual(['conviction'])
+    expect(decoded.zettels[0]?.flags).toEqual(['DECISION'])
+    expect(decoded.meta?.warnings?.length).toBe(2)
   })
 })

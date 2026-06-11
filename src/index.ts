@@ -326,8 +326,9 @@ export function injectContext(result: CompressResult, options?: InjectOptions): 
   return renderOutput(result, zettels, format)
 }
 
-export { encode, decode } from './encoder.js'
+export { encode, decode, encodeZettelLine, encodeTunnelLine } from './encoder.js'
 export { wakeUp, topZettels } from './layer1.js'
+export { ALL_FLAGS, ALL_EMOTIONS } from './types.js'
 export type {
   Zettel,
   Tunnel,
@@ -335,6 +336,7 @@ export type {
   CompressResult,
   CompressOptions,
   InjectOptions,
+  DecodeOptions,
   TextChunk,
   FlagName,
   EmotionName,

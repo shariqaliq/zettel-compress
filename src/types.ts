@@ -1,42 +1,48 @@
-export type FlagName =
-  | 'DECISION'
-  | 'ORIGIN'
-  | 'CORE'
-  | 'PIVOT'
-  | 'GENESIS'
-  | 'TECHNICAL'
+export const ALL_FLAGS = [
+  'DECISION',
+  'ORIGIN',
+  'CORE',
+  'PIVOT',
+  'GENESIS',
+  'TECHNICAL',
+] as const
 
-export type EmotionName =
-  | 'conviction'
-  | 'grief'
-  | 'joy'
-  | 'fear'
-  | 'hope'
-  | 'trust'
-  | 'wonder'
-  | 'rage'
-  | 'exhaustion'
-  | 'shame'
-  | 'pride'
-  | 'nostalgia'
-  | 'anxiety'
-  | 'relief'
-  | 'anticipation'
-  | 'frustration'
-  | 'gratitude'
-  | 'loneliness'
-  | 'inspiration'
-  | 'confusion'
-  | 'clarity'
-  | 'guilt'
-  | 'awe'
-  | 'regret'
-  | 'determination'
-  | 'vulnerability'
-  | 'acceptance'
-  | 'resistance'
-  | 'love'
-  | 'loss'
+export type FlagName = (typeof ALL_FLAGS)[number]
+
+export const ALL_EMOTIONS = [
+  'conviction',
+  'grief',
+  'joy',
+  'fear',
+  'hope',
+  'trust',
+  'wonder',
+  'rage',
+  'exhaustion',
+  'shame',
+  'pride',
+  'nostalgia',
+  'anxiety',
+  'relief',
+  'anticipation',
+  'frustration',
+  'gratitude',
+  'loneliness',
+  'inspiration',
+  'confusion',
+  'clarity',
+  'guilt',
+  'awe',
+  'regret',
+  'determination',
+  'vulnerability',
+  'acceptance',
+  'resistance',
+  'love',
+  'loss',
+] as const
+
+export type EmotionName = (typeof ALL_EMOTIONS)[number]
 
 export interface Zettel {
   id: string
@@ -68,7 +74,14 @@ export interface CompressResult {
     chunkCount: number
     date?: string
     title?: string
+    /** Non-fatal problems found while decoding (malformed lines, unknown tokens) */
+    warnings?: string[]
   }
+}
+
+export interface DecodeOptions {
+  /** Throw on malformed lines instead of skipping them with a warning */
+  strict?: boolean
 }
 
 export interface CompressOptions {
