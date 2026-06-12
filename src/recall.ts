@@ -19,11 +19,36 @@ const STOP = new Set([
   'had', 'will', 'would', 'can', 'could', 'should', 'how', 'when', 'where',
 ])
 
+// Poor man's stemmer: fold common inflection suffixes so "rotation",
+// "rotate", and "rotating" share a stem. The stem need not be a word —
+// both documents and queries pass through the same fold, so they meet in
+// the middle. These exact morphology gaps dominated QA misses in the
+// LLM-judged evaluation.
+function fold(t: string): string {
+  let s = t
+  if (s.length > 4 && s.endsWith('ies')) s = s.slice(0, -3) + 'y'
+  else if (s.length > 4 && /(?:ch|sh|ss|x|z)es$/.test(s)) s = s.slice(0, -2)
+  else if (s.length > 3 && s.endsWith('s') && !s.endsWith('ss') && !s.endsWith('us')) {
+    s = s.slice(0, -1)
+  }
+  if (s.length > 5 && s.endsWith('ing')) s = s.slice(0, -3)
+  else if (s.length > 4 && s.endsWith('ed')) s = s.slice(0, -2)
+  if (s.length > 5 && (s.endsWith('tion') || s.endsWith('sion'))) s = s.slice(0, -3)
+  if (s.length > 5 && s.endsWith('ly')) s = s.slice(0, -2)
+  if (s.length > 4 && s.endsWith('e')) s = s.slice(0, -1)
+  // collapse doubled final consonant left by -ing/-ed stripping (capp → cap)
+  if (s.length > 3 && s[s.length - 1] === s[s.length - 2] && !/[aeiou]/.test(s[s.length - 1]!)) {
+    s = s.slice(0, -1)
+  }
+  return s
+}
+
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .split(/[^a-z0-9_]+/)
     .filter((t) => t.length >= 2 && !STOP.has(t))
+    .map(fold)
 }
 
 function zettelTokens(z: Zettel): string[] {

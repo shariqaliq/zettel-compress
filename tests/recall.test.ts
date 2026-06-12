@@ -93,6 +93,32 @@ describe('recall — BM25 retrieval (issue #10)', () => {
   })
 })
 
+describe('recall — morphological suffix folding (issue #14)', () => {
+  it('matches across inflections: rotation ↔ rotate, capping ↔ cap', () => {
+    const result = makeResult([
+      { quote: 'We are capping the retry budget and rotating credentials.', topics: ['retries'] },
+      { quote: 'The cat sat quietly on the windowsill all afternoon.', topics: ['cat'] },
+    ])
+    expect(recall(result, 'retry cap')[0]?.id).toBe('001')
+    expect(recall(result, 'credential rotation')[0]?.id).toBe('001')
+  })
+
+  it('matches plurals and -ed forms', () => {
+    const result = makeResult([
+      { quote: 'The team decided on nightly invoice batches.', topics: [] },
+      { quote: 'Unrelated filler text about the weather patterns.', topics: [] },
+    ])
+    expect(recall(result, 'what did they decide about the invoices batch')[0]?.id).toBe('001')
+  })
+
+  it('does not create false matches between unrelated stems', () => {
+    const result = makeResult([
+      { quote: 'The station master inspected the platform early.', topics: [] },
+    ])
+    expect(recall(result, 'static analysis')).toEqual([])
+  })
+})
+
 describe('recall — multi-hop via tunnel graph (issue #10)', () => {
   // 001 matches the query; 002 shares a tunnel with 001 but no query terms;
   // 003 is unrelated and unlinked
