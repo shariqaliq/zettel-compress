@@ -62,10 +62,12 @@ Honest framing: long-context GPT-4-class models with the *entire*
 conversation in the prompt score in the 30s–50s F1 band on these categories;
 LLM-write memory systems (mem0) report ~67 under a more lenient LLM-judge
 metric. zettel-compress reaches the full-context band at ~1% of the tokens
-with zero model calls on the memory side. The measured bottleneck is
-retrieval ranking (answer-in-context 38% — when the answer is retrieved, the
-model converts it almost perfectly), which is the optional semantic layer's
-target.
+with zero model calls on the memory side. Ceiling analysis: only 45.1% of
+LoCoMo gold answers appear verbatim anywhere in the conversation (annotators
+reworded the rest), and BM25 retrieval already surfaces 86% of that ceiling
+in the top-10 — a measured GloVe-blend spike gained +0.4 points, so the
+remaining gap is answer rewording and metric strictness, not retrieval
+ranking.
 
 ### Speed, size, and guarantees
 
