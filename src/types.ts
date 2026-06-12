@@ -106,6 +106,8 @@ export interface CompressOptions {
   dedupe?: boolean
   /** Token-set Jaccard similarity at which zettels count as duplicates (default 0.9) */
   dedupeThreshold?: number
+  /** Use entity names in tunnel labels (Alice+Bob) instead of codes (ALC+BBB) */
+  verboseLabels?: boolean
 }
 
 export interface InjectOptions {
@@ -128,6 +130,11 @@ export interface InjectOptions {
    * result — even if filters or ranking would have excluded it.
    */
   guaranteeFlags?: FlagName[]
+  /**
+   * Exact token counter for budget enforcement (e.g. a js-tiktoken encode
+   * length). Defaults to the built-in estimate.
+   */
+  countTokens?: (text: string) => number
 }
 
 export interface TextChunk {

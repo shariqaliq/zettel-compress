@@ -40,7 +40,7 @@ QA accuracy with **gpt-4o-mini** answering from each context (the reply must con
 The honest read:
 
 - **`recall()` is the headline.** From a 233k-token corpus, ~150 tokens of retrieved memory let the model answer 75% of questions — the naive same-cost baseline answers 0%. No embeddings, no API, sub-millisecond.
-- **Static injection is for conversation-scale memory.** On a 19-zettel conversation, top-10 injection carries 92% of planted decision signals (58% end-to-end with the model). On a 1,085-zettel book, 10 zettels cannot cover 12 scattered facts — use `recall()` for archives.
+- **Static injection is for conversation-scale memory.** On a 19-zettel conversation, top-10 injection carries 83% of planted decision signals (58% end-to-end with the model). On a 1,085-zettel book, 10 zettels cannot cover 12 scattered facts — use `recall()` for archives.
 - **Use `format: 'markdown'` when injecting directly into prompts** — models read plain quotes better than the compact AAAK lines (33% vs 17% at the same budget in our runs). Use AAAK for storage and round-tripping.
 
 ### Speed, size, and guarantees
@@ -147,6 +147,7 @@ compress(text, {
   tunnelTopK: 3,           // max tunnels per zettel
   dedupe: true,            // merge near-duplicate zettels (default false)
   dedupeThreshold: 0.9,    // token-set Jaccard that counts as duplicate
+  verboseLabels: true,     // tunnel labels as Alice+Bob instead of ALC+BBB
 })
 ```
 
@@ -167,6 +168,7 @@ injectContext(result, {
   flags: ['DECISION'],       // filter to flags
   format: 'markdown',        // 'aaak' (default) | 'json' | 'markdown'
   maxTokenBudget: 300,       // hard ceiling — output measured, never exceeded
+  countTokens: myTokenizer,  // optional exact counter (e.g. js-tiktoken)
 })
 ```
 

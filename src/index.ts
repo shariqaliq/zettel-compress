@@ -19,6 +19,26 @@ import type {
   EntityIndex,
 } from './types.js'
 
+// A zettel that many tunnels touch is structurally central to the document
+// (LexRank's intuition at zettel granularity). Degree centrality feeds into
+// raw weight before normalization; with no tunnels this is a rank-preserving
+// rescale, so tunnel-less results are unaffected.
+const CENTRALITY_BLEND = 0.2
+
+export function blendCentrality(zettels: Zettel[], tunnels: Tunnel[]): void {
+  if (zettels.length === 0) return
+  const degree = new Map<string, number>()
+  for (const t of tunnels) {
+    degree.set(t.from, (degree.get(t.from) ?? 0) + 1)
+    degree.set(t.to, (degree.get(t.to) ?? 0) + 1)
+  }
+  const maxDegree = Math.max(0, ...degree.values())
+  for (const z of zettels) {
+    const centrality = maxDegree > 0 ? (degree.get(z.id) ?? 0) / maxDegree : 0
+    z.weight = (1 - CENTRALITY_BLEND) * z.weight + CENTRALITY_BLEND * centrality
+  }
+}
+
 /**
  * Rank-based softmax weight normalization, in place. Weights are relative
  * within one result: ranks (not raw magnitudes) are softmaxed and min-max
@@ -105,14 +125,26 @@ export function compress(text: string, options?: CompressOptions): CompressResul
     zettels = dedupeZettels(zettels, options.dedupeThreshold)
   }
 
-  normalizeWeights(zettels, options?.temperature)
-
+  // Tunnels are built on raw zettels (scores don't involve weight), so
+  // graph centrality can feed back into importance before normalization
   const tunnels = buildTunnels(
     zettels,
     entityIndex,
     options?.tunnelThreshold,
     options?.tunnelTopK,
+    options?.verboseLabels,
   )
+  blendCentrality(zettels, tunnels)
+
+  normalizeWeights(zettels, options?.temperature)
+
+  // Degenerate inputs produce a technically valid but meaningless zettel —
+  // surface that instead of leaving callers to discover it downstream
+  const MIN_MEANINGFUL_INPUT = 40
+  const warnings =
+    text.trim().length < MIN_MEANINGFUL_INPUT
+      ? [`input is ${text.trim().length} chars — too short for meaningful compression`]
+      : undefined
 
   return {
     zettels,
@@ -122,6 +154,7 @@ export function compress(text: string, options?: CompressOptions): CompressResul
       { inputLength: text.length, chunkCount: chunks.length },
       options?.date !== undefined ? { date: options.date } : {},
       options?.title !== undefined ? { title: options.title } : {},
+      warnings !== undefined ? { warnings } : {},
     ),
   }
 }
@@ -159,11 +192,12 @@ export function mergeResults(results: CompressResult[]): CompressResult {
     r.zettels.map((z) => ({ ...z, id: String(globalIndex++).padStart(3, '0') })),
   )
 
+  const mergedTunnels = buildTunnels(mergedZettels, mergedIndex)
+  blendCentrality(mergedZettels, mergedTunnels)
+
   // Per-result weights are on independent scales (single-chunk results carry
   // raw scores) — re-normalize over the merged set so filtering is consistent
   normalizeWeights(mergedZettels)
-
-  const mergedTunnels = buildTunnels(mergedZettels, mergedIndex)
 
   const totalInput = results.reduce((sum, r) => sum + (r.meta?.inputLength ?? 0), 0)
 
@@ -310,6 +344,7 @@ function fitToBudget(
   candidates: Zettel[],
   format: 'aaak' | 'json' | 'markdown',
   budget: number,
+  countTokens: (text: string) => number,
 ): Zettel[] {
   const sorted = [...candidates].sort(
     (a, b) => selectionScore(b) - selectionScore(a) || a.id.localeCompare(b.id),
@@ -320,7 +355,7 @@ function fitToBudget(
   // ranked but smaller zettels can still use the remaining budget
   for (const z of sorted) {
     const attempt = renderOutput(result, [...selected, z], format)
-    if (estimateTokens(attempt) > budget) continue
+    if (countTokens(attempt) > budget) continue
     selected.push(z)
   }
 
@@ -354,7 +389,13 @@ export function injectContext(result: CompressResult, options?: InjectOptions): 
 
   // Budget is the final gate: measure real rendered output, never exceed
   if (options?.maxTokenBudget !== undefined) {
-    zettels = fitToBudget(result, zettels, format, options.maxTokenBudget)
+    zettels = fitToBudget(
+      result,
+      zettels,
+      format,
+      options.maxTokenBudget,
+      options.countTokens ?? estimateTokens,
+    )
   }
 
   return renderOutput(result, zettels, format)

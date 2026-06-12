@@ -40,7 +40,10 @@ export function buildTunnels(
   entityIndex: EntityIndex,
   threshold = 0.3,
   topK = 3,
+  verboseLabels = false,
 ): Tunnel[] {
+  const entityLabel = (name: string): string =>
+    verboseLabels ? name : (entityIndex.nameToCode[name] ?? name.slice(0, 3).toUpperCase())
   // Collect candidate (i, j, score, tunnel) pairs, then verify exactly
   const candidates: Array<{ i: number; j: number; score: number; tunnel: Tunnel }> = []
 
@@ -64,10 +67,7 @@ export function buildTunnels(
 
     let label: string
     if (sharedEntities.length >= 2) {
-      label = sharedEntities
-        .slice(0, 3)
-        .map((name) => entityIndex.nameToCode[name] ?? name.slice(0, 3).toUpperCase())
-        .join('+')
+      label = sharedEntities.slice(0, 3).map(entityLabel).join('+')
     } else if (sharedEntities.length === 1) {
       const sharedTopics = intersection(a.topics, b.topics)
       label = sharedTopics.length > 0 ? sharedTopics.slice(0, 2).join('_') : (sharedEntities[0] ?? '')

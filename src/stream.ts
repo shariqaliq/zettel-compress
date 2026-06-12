@@ -8,7 +8,7 @@ import { detectFlags } from './flag-detector.js'
 import { buildTunnels } from './tunnel-builder.js'
 import { dedupeTokens } from './dedupe.js'
 import { exactJaccard } from './minhash.js'
-import { normalizeWeights } from './index.js'
+import { normalizeWeights, blendCentrality } from './index.js'
 import { recall } from './recall.js'
 import type { RecallOptions } from './recall.js'
 import type {
@@ -178,14 +178,15 @@ export class CompressStream {
       emotions: [...z.emotions],
       flags: [...z.flags],
     }))
-    normalizeWeights(zettels, this.options.temperature)
-
     const tunnels = buildTunnels(
       zettels,
       this.entityIndex,
       this.options.tunnelThreshold,
       this.options.tunnelTopK,
+      this.options.verboseLabels,
     )
+    blendCentrality(zettels, tunnels)
+    normalizeWeights(zettels, this.options.temperature)
 
     return {
       zettels,
