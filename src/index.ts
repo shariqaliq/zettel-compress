@@ -7,7 +7,7 @@ import { detectEmotions, computeWeight } from './emotion-detector.js'
 import { detectFlags } from './flag-detector.js'
 import { buildTunnels } from './tunnel-builder.js'
 import { dedupeZettels } from './dedupe.js'
-import { encode, decode } from './encoder.js'
+import { encode, decode, encodeZettelLine } from './encoder.js'
 import { wakeUp, topZettels } from './layer1.js'
 import type {
   CompressResult,
@@ -339,6 +339,16 @@ function renderOutput(
 // Greedy budget fit: zettels enter in weight order, each measured as it would
 // actually render, and the budget is never exceeded. Tunnel lines (aaak/json)
 // are added last with whatever budget remains.
+function zettelLineFor(
+  z: Zettel,
+  result: CompressResult,
+  format: 'aaak' | 'json' | 'markdown',
+): string {
+  if (format === 'json') return JSON.stringify(z, null, 2)
+  if (format === 'markdown') return markdownLine(z)
+  return encodeZettelLine(z, result.entityIndex)
+}
+
 function fitToBudget(
   result: CompressResult,
   candidates: Zettel[],
@@ -350,13 +360,20 @@ function fitToBudget(
     (a, b) => selectionScore(b) - selectionScore(a) || a.id.localeCompare(b.id),
   )
   const selected: Zettel[] = []
+  let used = countTokens(renderOutput(result, selected, format))
 
   // first-fit-decreasing: an oversized zettel doesn't end selection — lower
-  // ranked but smaller zettels can still use the remaining budget
+  // ranked but smaller zettels can still use the remaining budget. A zettel's
+  // own rendered line is a lower bound on what it adds (index and tunnel
+  // lines only grow the output), so hopeless candidates are skipped without
+  // re-rendering the whole selection.
   for (const z of sorted) {
+    if (used + countTokens(zettelLineFor(z, result, format)) > budget) continue
     const attempt = renderOutput(result, [...selected, z], format)
-    if (countTokens(attempt) > budget) continue
+    const attemptTokens = countTokens(attempt)
+    if (attemptTokens > budget) continue
     selected.push(z)
+    used = attemptTokens
   }
 
   return selected
