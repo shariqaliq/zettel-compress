@@ -6,6 +6,7 @@ import { selectKeySentence } from './sentence-scorer.js'
 import { detectEmotions, computeWeight } from './emotion-detector.js'
 import { detectFlags } from './flag-detector.js'
 import { buildTunnels } from './tunnel-builder.js'
+import { dedupeZettels } from './dedupe.js'
 import { encode, decode } from './encoder.js'
 import { wakeUp, topZettels } from './layer1.js'
 import type {
@@ -79,7 +80,7 @@ export function compress(text: string, options?: CompressOptions): CompressResul
   const entityIndex = buildEntityIndex(allEntityNames)
 
   // Pass 2: build each zettel
-  const zettels = chunks.map((chunk, i) => {
+  let zettels = chunks.map((chunk, i) => {
     const entities = chunkEntities[i] ?? []
     const topics = extractTopics(chunk.text, options?.minTopicFrequency, options?.stopWords)
     const quote = selectKeySentence(chunk.text)
@@ -97,6 +98,12 @@ export function compress(text: string, options?: CompressOptions): CompressResul
       flags,
     }
   })
+
+  // Dedup runs on raw weights so the strongest copy of a repeated moment
+  // survives; normalization then sees the deduplicated population
+  if (options?.dedupe) {
+    zettels = dedupeZettels(zettels, options.dedupeThreshold)
+  }
 
   normalizeWeights(zettels, options?.temperature)
 

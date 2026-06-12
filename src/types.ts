@@ -98,6 +98,14 @@ export interface CompressOptions {
   tunnelTopK?: number
   /** Minimum Jaccard similarity score to emit a tunnel (default 0.3) */
   tunnelThreshold?: number
+  /**
+   * Merge near-duplicate zettels (repeated boilerplate, re-sent messages).
+   * The highest-weight copy survives and absorbs the others' entities,
+   * topics, emotions, and flags (default false).
+   */
+  dedupe?: boolean
+  /** Token-set Jaccard similarity at which zettels count as duplicates (default 0.9) */
+  dedupeThreshold?: number
 }
 
 export interface InjectOptions {

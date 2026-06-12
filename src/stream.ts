@@ -6,6 +6,8 @@ import { selectKeySentence } from './sentence-scorer.js'
 import { detectEmotions, computeWeight } from './emotion-detector.js'
 import { detectFlags } from './flag-detector.js'
 import { buildTunnels } from './tunnel-builder.js'
+import { dedupeTokens } from './dedupe.js'
+import { exactJaccard } from './minhash.js'
 import { normalizeWeights } from './index.js'
 import { recall } from './recall.js'
 import type { RecallOptions } from './recall.js'
@@ -36,6 +38,8 @@ interface StreamZettel extends Zettel {
   turn: number
   /** raw, un-normalized weight from detection */
   rawWeight: number
+  /** dedup token set — only populated when options.dedupe is on */
+  tokens?: Set<string>
 }
 
 /**
@@ -88,9 +92,8 @@ export class CompressStream {
       const flags = detectFlags(chunk.text)
       const emotions = detectEmotions(chunk.text)
 
-      this.idCounter++
-      this.zettels.push({
-        id: String(this.idCounter).padStart(3, '0'),
+      const candidate: StreamZettel = {
+        id: String(this.idCounter + 1).padStart(3, '0'),
         entities,
         topics: extractTopics(chunk.text, this.options.minTopicFrequency, this.options.stopWords),
         quote: selectKeySentence(chunk.text),
@@ -99,7 +102,16 @@ export class CompressStream {
         emotions,
         flags,
         turn: this.turn,
-      })
+      }
+
+      // A near-duplicate of an existing zettel refreshes that zettel's
+      // recency and absorbs new metadata instead of growing the stream —
+      // repetition strengthens a memory rather than copying it
+      if (this.options.dedupe && this.absorbDuplicate(candidate)) continue
+
+      this.idCounter++
+      candidate.id = String(this.idCounter).padStart(3, '0')
+      this.zettels.push(candidate)
 
       for (const name of entities) {
         const idx = this.recentEntities.indexOf(name)
@@ -110,6 +122,29 @@ export class CompressStream {
     this.recentEntities = this.recentEntities.slice(-8)
 
     this.evict()
+  }
+
+  private absorbDuplicate(candidate: StreamZettel): boolean {
+    const threshold = this.options.dedupeThreshold ?? 0.9
+    candidate.tokens = dedupeTokens(candidate)
+    for (const existing of this.zettels) {
+      existing.tokens ??= dedupeTokens(existing)
+      if (exactJaccard(candidate.tokens, existing.tokens) >= threshold) {
+        existing.turn = this.turn // refresh recency
+        if (candidate.rawWeight > existing.rawWeight) existing.rawWeight = candidate.rawWeight
+        existing.entities = [...new Set([...existing.entities, ...candidate.entities])].sort()
+        existing.topics = [...new Set([...existing.topics, ...candidate.topics])]
+        for (const e of candidate.emotions) {
+          if (!existing.emotions.includes(e)) existing.emotions.push(e)
+        }
+        for (const f of candidate.flags) {
+          if (!existing.flags.includes(f)) existing.flags.push(f)
+        }
+        delete existing.tokens // merged fields changed — recompute lazily
+        return true
+      }
+    }
+    return false
   }
 
   private decayedWeight(z: StreamZettel): number {

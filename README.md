@@ -145,8 +145,12 @@ compress(text, {
   temperature: 0.5,        // softmax temperature for weight spread
   tunnelThreshold: 0.3,    // min Jaccard similarity for a tunnel
   tunnelTopK: 3,           // max tunnels per zettel
+  dedupe: true,            // merge near-duplicate zettels (default false)
+  dedupeThreshold: 0.9,    // token-set Jaccard that counts as duplicate
 })
 ```
+
+Tunnel building switches to MinHash/LSH candidate generation above 500 zettels — 10,000 zettels link in ~400ms instead of 50M pairwise comparisons, deterministically.
 
 ### `recall(result, query, options?): Zettel[]`
 
@@ -170,7 +174,7 @@ Only tunnels and entity-index entries belonging to the selected zettels are emit
 
 ### `CompressStream`
 
-Incremental memory for message streams. `push(text)`, `snapshot()`, `recall(query, opts?)`, `size`. Options: all of `CompressOptions` plus `halfLifeTurns` (recency decay in pushes) and `maxZettels` (bounded memory via lowest-decayed-weight eviction). Entity codes never change once assigned; replaying the same pushes reproduces a byte-identical snapshot.
+Incremental memory for message streams. `push(text)`, `snapshot()`, `recall(query, opts?)`, `size`. Options: all of `CompressOptions` plus `halfLifeTurns` (recency decay in pushes) and `maxZettels` (bounded memory via lowest-decayed-weight eviction). With `dedupe: true`, a re-sent or boilerplate message refreshes the recency of the zettel it duplicates instead of growing the stream — repetition strengthens a memory rather than copying it. Entity codes never change once assigned; replaying the same pushes reproduces a byte-identical snapshot.
 
 ### `wakeUp(result, topPct = 0.15): string`
 
