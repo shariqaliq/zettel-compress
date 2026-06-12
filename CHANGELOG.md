@@ -3,6 +3,26 @@
 All notable changes to zettel-compress. Benchmark numbers are reproducible
 with `npm run bench` (deterministic) and `npm run bench:llm` (model-judged).
 
+## Unreleased
+
+### Added
+- **Provenance-expanded recall (small-to-big retrieval)**: zettels carry
+  exact `sourceStart`/`sourceEnd` offsets, `compress()` keeps the normalized
+  input on `meta.source` (opt out with `keepSource: false`), and the new
+  `recallContext(result, query, { topK, hops, maxTokens, source })` returns
+  merged full source passages in document order instead of single quotes.
+  BM25 now indexes the full source chunk when available. Offsets serialize
+  in AAAK as an optional trailing span field; the source text never does.
+  `CompressStream` maintains a source log and exposes `recallContext`;
+  `mergeResults` drops offsets that would point into the wrong document.
+- **LoCoMo-10 evaluation harness** (`npm run bench:locomo`): full protocol
+  over all 1,986 questions, token-F1 + substring scoring per category,
+  abstention scoring for the adversarial set, rate-limit-aware retries.
+  Measured impact of provenance expansion: overall F1 (categories 1–4)
+  5.9 → 41.6, single-hop 8.0 → 57.0, temporal 1.3 → 23.6, answer-in-context
+  9.7% → 38.0%, at ~1.7k context tokens/question. Adversarial abstention
+  95.5% → 87.4% (richer context tempts more answers).
+
 ## 0.2.1 — 2026-06-12
 
 ### Added

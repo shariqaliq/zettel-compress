@@ -43,6 +43,30 @@ The honest read:
 - **Static injection is for conversation-scale memory.** On a 19-zettel conversation, top-10 injection carries 83% of planted decision signals (58% end-to-end with the model). On a 1,085-zettel book, 10 zettels cannot cover 12 scattered facts — use `recall()` for archives.
 - **Use `format: 'markdown'` when injecting directly into prompts** — models read plain quotes better than the compact AAAK lines (33% vs 17% at the same budget in our runs). Use AAAK for storage and round-tripping.
 
+### Public benchmark: LoCoMo-10 (very-long-term conversational QA)
+
+Full protocol over all 1,986 questions: 10 multi-session conversations (260k
+tokens total) compressed once each, gpt-4o-mini answering from
+`recallContext(question)` top-10 passages only (`npm run bench:locomo`).
+
+| retrieval mode | overall F1 (cat 1–4) | single-hop | temporal | multi-hop | answer-in-context |
+|---|---|---|---|---|---|
+| quotes only (pre-0.3) | 5.9 | 8.0 | 1.3 | 5.4 | 9.7% |
+| **small-to-big (`recallContext`)** | **41.6** | **57.0** | **23.6** | **27.6** | **38.0%** |
+
+Adversarial category (446 unanswerable questions): 87.4% correct abstention,
+6.1% trapped. Average context: ~1,700 tokens/question — under 1% of the
+conversation. No-context baseline: F1 0.0.
+
+Honest framing: long-context GPT-4-class models with the *entire*
+conversation in the prompt score in the 30s–50s F1 band on these categories;
+LLM-write memory systems (mem0) report ~67 under a more lenient LLM-judge
+metric. zettel-compress reaches the full-context band at ~1% of the tokens
+with zero model calls on the memory side. The measured bottleneck is
+retrieval ranking (answer-in-context 38% — when the answer is retrieved, the
+model converts it almost perfectly), which is the optional semantic layer's
+target.
+
 ### Speed, size, and guarantees
 
 | dataset | input tokens | zettels | compress time | throughput |
@@ -114,8 +138,9 @@ injectContext(result, { maxZettels: 10, guaranteeFlags: ['DECISION'] })
 // diversity-aware selection (maximal marginal relevance)
 injectContext(result, { maxZettels: 10, selection: 'mmr' })
 
-// search memory at question time
+// search memory at question time — ranked zettels, or ready-to-inject passages
 const hits = recall(result, 'what did we decide about auth?', { topK: 5 })
+const context = recallContext(result, 'what did we decide about auth?', { maxTokens: 2000 })
 
 // short narrative of the top moments (top 15% by weight)
 const summary = wakeUp(result)
@@ -148,14 +173,22 @@ compress(text, {
   dedupe: true,            // merge near-duplicate zettels (default false)
   dedupeThreshold: 0.9,    // token-set Jaccard that counts as duplicate
   verboseLabels: true,     // tunnel labels as Alice+Bob instead of ALC+BBB
+  keepSource: true,        // retain normalized input on meta.source for
+                           // provenance-expanded recall (default true)
 })
 ```
+
+Zettels carry exact `sourceStart`/`sourceEnd` offsets into `meta.source`; the offsets serialize in AAAK, the source text never does (the format stays compact — re-supply the text via `recallContext`'s `source` option after decoding).
 
 Tunnel building switches to MinHash/LSH candidate generation above 500 zettels — 10,000 zettels link in ~400ms instead of 50M pairwise comparisons, deterministically.
 
 ### `recall(result, query, options?): Zettel[]`
 
-Query-time retrieval: BM25 over quote/topics/entities, optionally expanded one hop along the tunnel graph with personalized PageRank. `{ topK?: number, hops?: boolean }`. Deterministic.
+Query-time retrieval: BM25 over each zettel's full source chunk (falling back to quote/topics/entities when no source is kept), optionally expanded one hop along the tunnel graph with personalized PageRank. `{ topK?: number, hops?: boolean }`. Deterministic.
+
+### `recallContext(result, query, options?): string`
+
+Small-to-big retrieval — the recommended way to build LLM context. Ranks on the compact zettel index, then returns the **full source passages** the hits came from: overlapping spans merge, a token budget admits passages in rank order, and the output assembles in document order so narrative/temporal flow survives. `{ topK?, hops?, maxTokens?, source? }`. Falls back to quotes when no source text is available (e.g. decoded AAAK; pass `source` to restore it). This is what lifted LoCoMo F1 from 5.9 to 41.6.
 
 ### `injectContext(result, options?): string`
 
