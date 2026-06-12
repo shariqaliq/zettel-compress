@@ -7,6 +7,8 @@ Deterministic, LLM-free memory engine for LLM apps: compresses text into structu
 
 **Zero runtime dependencies. Works in Node.js, browsers, Cloudflare Workers, and Vercel Edge. Same input, same output, every time.**
 
+**[▶ Try it in the playground](https://shariqaliq.github.io/zettel-compress/)** — the full engine runs client-side in your tab (14 kB gzipped): paste a conversation, watch it become structured memory, ask it questions.
+
 ```ts
 import { compress, recall, injectContext } from 'zettel-compress'
 

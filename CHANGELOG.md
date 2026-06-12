@@ -3,9 +3,13 @@
 All notable changes to zettel-compress. Benchmark numbers are reproducible
 with `npm run bench` (deterministic) and `npm run bench:llm` (model-judged).
 
-## Unreleased
+## 0.3.0 — 2026-06-13
 
 ### Added
+- **Browser playground** ([shariqaliq.github.io/zettel-compress](https://shariqaliq.github.io/zettel-compress/)):
+  the full engine bundled at 14 kB gzipped, running client-side — live
+  compression, question-answering over the memory, prompt-injection preview
+  with a token-budget slider. Deploys from master via GitHub Pages.
 - **Provenance-expanded recall (small-to-big retrieval)**: zettels carry
   exact `sourceStart`/`sourceEnd` offsets, `compress()` keeps the normalized
   input on `meta.source` (opt out with `keepSource: false`), and the new

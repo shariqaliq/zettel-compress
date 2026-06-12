@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zettel-compress playground — deterministic LLM memory, in your browser</title>
+<meta name="description" content="Compress conversation history into searchable, structured memory. Zero dependencies, no server — everything runs in this tab.">
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --dim: #8b949e; --accent: #58a6ff; --green: #3fb950; --amber: #d29922;
+    --pink: #f778ba; --mark: #3b2e00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  header {
+    padding: 20px 24px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 19px; margin: 0; font-weight: 650; }
+  header h1 span { color: var(--accent); }
+  header p { margin: 0; color: var(--dim); font-size: 13.5px; }
+  header a { color: var(--accent); text-decoration: none; margin-left: auto; font-size: 13.5px; }
+  main {
+    display: grid; grid-template-columns: minmax(380px, 44%) 1fr;
+    gap: 0; height: calc(100vh - 62px);
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }
+  .col { overflow-y: auto; padding: 18px 22px; }
+  .col.left { border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+  label.h { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); font-weight: 600; }
+  textarea {
+    flex: 1; min-height: 320px; width: 100%; resize: vertical;
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; font: 13px/1.55 ui-monospace, monospace; outline: none;
+  }
+  textarea:focus { border-color: var(--accent); }
+  .stats { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--dim); }
+  .stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .stats .ratio b { color: var(--green); }
+  .ask { display: flex; gap: 8px; }
+  .ask input {
+    flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font-size: 14px; outline: none;
+  }
+  .ask input:focus { border-color: var(--accent); }
+  button {
+    background: #1f6feb; color: #fff; border: 0; border-radius: 8px;
+    padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: #2f81f7; }
+  button.ghost { background: transparent; color: var(--dim); border: 1px solid var(--border); padding: 6px 10px; font-size: 12.5px; font-weight: 500; }
+  button.ghost:hover { color: var(--text); border-color: var(--dim); }
+  .tabs { display: flex; gap: 6px; margin: 6px 0 10px; }
+  .tabs button.ghost.active { color: var(--accent); border-color: var(--accent); }
+  section { margin-bottom: 26px; }
+  section > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 10px; font-weight: 650; }
+  .answer {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--green);
+    border-radius: 8px; padding: 12px 14px; white-space: pre-wrap;
+    font: 13px/1.6 ui-monospace, monospace;
+  }
+  .answer mark { background: var(--mark); color: #ffd866; border-radius: 3px; padding: 0 2px; }
+  .answer .meta { color: var(--dim); font-family: ui-sans-serif, system-ui; font-size: 12.5px; margin-bottom: 8px; }
+  .zgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .zettel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 11px 13px; font-size: 13px; position: relative; transition: border-color .15s;
+  }
+  .zettel.hit { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+  .zettel .id { color: var(--dim); font: 11px ui-monospace, monospace; }
+  .zettel .quote { margin: 6px 0; color: var(--text); }
+  .zettel .bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 8px 0 6px; }
+  .zettel .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; }
+  .badge { font: 11px ui-monospace, monospace; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--border); color: var(--dim); }
+  .badge.entity { color: var(--accent); border-color: #1f6feb66; }
+  .badge.flag { color: var(--amber); border-color: #d2992266; }
+  .badge.emotion { color: var(--pink); border-color: #f778ba55; }
+  pre.out {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; overflow-x: auto; font: 12.5px/1.55 ui-monospace, monospace;
+    white-space: pre-wrap; word-break: break-word; margin: 0;
+  }
+  .tunnels { font: 12.5px ui-monospace, monospace; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
+  .tunnels b { color: var(--text); }
+  .hint { color: var(--dim); font-size: 13px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  input[type=range] { accent-color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>zettel-compress</span> playground</h1>
+  <p>deterministic LLM memory — compress, search, inject. Everything runs in this tab. No server, no model, no deps.</p>
+  <a href="https://github.com/shariqaliq/zettel-compress" target="_blank" rel="noopener">GitHub ↗</a>
+</header>
+<main>
+  <div class="col left">
+    <div class="row" style="justify-content: space-between">
+      <label class="h" for="input">conversation / document</label>
+      <span>
+        <button class="ghost" id="loadSample">load sample</button>
+        <button class="ghost" id="clearBtn">clear</button>
+      </span>
+    </div>
+    <textarea id="input" spellcheck="false" placeholder="Paste a conversation, meeting notes, or any text…"></textarea>
+    <div class="stats" id="stats"></div>
+    <label class="h" for="q">ask the memory</label>
+    <form class="ask" id="askForm">
+      <input id="q" placeholder="what did we decide about authentication?" autocomplete="off">
+      <button type="submit">recall</button>
+    </form>
+  </div>
+
+  <div class="col right">
+    <section id="answerSec" hidden>
+      <h2>recalled context <span id="answerMeta" style="text-transform:none;font-weight:400"></span></h2>
+      <div class="answer" id="answer"></div>
+    </section>
+
+    <section>
+      <h2>zettels <span id="zcount" style="text-transform:none;font-weight:400"></span></h2>
+      <div class="zgrid" id="zettels"><p class="hint">Paste text on the left (or load the sample) — compression runs live as you type.</p></div>
+    </section>
+
+    <section id="tunnelSec" hidden>
+      <h2>tunnels — links between related moments</h2>
+      <div class="tunnels" id="tunnels"></div>
+    </section>
+
+    <section id="injectSec" hidden>
+      <h2>inject into a prompt</h2>
+      <div class="row">
+        <div class="tabs" id="fmtTabs">
+          <button class="ghost active" data-fmt="markdown">markdown</button>
+          <button class="ghost" data-fmt="aaak">aaak</button>
+          <button class="ghost" data-fmt="json">json</button>
+        </div>
+        <label class="hint">budget <b id="budgetVal">300</b> tokens
+          <input type="range" id="budget" min="100" max="1500" step="50" value="300">
+        </label>
+        <button class="ghost" id="copyOut">copy</button>
+      </div>
+      <pre class="out" id="inject"></pre>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { compress, recall, recallContext, injectContext, estimateTokens }
+  from './zettel-compress.min.js'
+
+const $ = (id) => document.getElementById(id)
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+
+const SAMPLE = `Alice: The login service keeps timing out under load every afternoon. Users are hitting 504s right at the peak window and support tickets are piling up.
+
+Bob: I dug into it this morning. The session lookups hammer the database on every request — there's no caching layer at all in front of it.
+
+Alice: That matches what the traces show. OK, decision time: we'll rotate the authentication tokens hourly and put a Redis cache in front of the session lookups. I'm certain this fixes the peak load problem.
+
+Bob: Agreed. I'll own the Redis piece. The token rotation needs a feature flag though — last time we changed auth without one it was a disaster and I'm still exhausted from that week.
+
+Alice: Fair. We committed to shipping behind a flag by Friday then. Carol should review the key rotation schedule since she built the original system back in 2021.
+
+Carol: Happy to. One thing — the audit log retention is only 30 days, which turned out to be fundamental when we debugged the last incident. Whatever we ship, keep the rotation events in the audit log.
+
+Bob: Noted. Also the deploy pipeline now gates on the integration suite, so the rollout itself is safer than last time.
+
+Alice: Great. To summarize: hourly token rotation plus Redis-backed session cache, behind a feature flag, shipping Friday, Carol reviews rotation schedule, rotation events stay in the audit log. This was a breakthrough meeting — I was honestly worried we'd be stuck for another sprint.`
+
+let result = null
+let hits = []
+let fmt = 'markdown'
+let debounce = null
+
+function rebuild() {
+  const text = $('input').value
+  if (text.trim().length === 0) {
+    result = null; hits = []
+    render()
+    return
+  }
+  const t0 = performance.now()
+  result = compress(text)
+  const ms = performance.now() - t0
+  result._ms = ms
+  hits = []
+  $('answerSec').hidden = true
+  render()
+}
+
+function render() {
+  const stats = $('stats')
+  const zc = $('zettels')
+  if (!result) {
+    stats.textContent = ''
+    zc.innerHTML = '<p class="hint">Paste text on the left (or load the sample) — compression runs live as you type.</p>'
+    $('zcount').textContent = ''
+    $('tunnelSec').hidden = true
+    $('injectSec').hidden = true
+    return
+  }
+  const inTok = estimateTokens($('input').value)
+  const out = injectContext(result, { maxZettels: 10, format: 'markdown' })
+  const outTok = estimateTokens(out)
+  stats.innerHTML =
+    `<span><b>${inTok.toLocaleString()}</b> tokens in</span>` +
+    `<span><b>${result.zettels.length}</b> zettels</span>` +
+    `<span class="ratio">top-10 inject <b>${outTok}</b> tokens (${(100 * outTok / Math.max(inTok, 1)).toFixed(1)}%)</span>` +
+    `<span><b>${result._ms.toFixed(1)}</b> ms</span>`
+
+  const hitIds = new Set(hits.map((z) => z.id))
+  const sorted = [...result.zettels].sort((a, b) => b.weight - a.weight)
+  zc.innerHTML = sorted.map((z) => `
+    <div class="zettel ${hitIds.has(z.id) ? 'hit' : ''}">
+      <span class="id">#${z.id} · w ${z.weight.toFixed(2)}</span>
+      <div class="quote">${esc(z.quote)}</div>
+      <div class="bar"><i style="width:${Math.round(z.weight * 100)}%"></i></div>
+      <div class="badges">
+        ${z.entities.map((e) => `<span class="badge entity">${esc(e)}</span>`).join('')}
+        ${z.flags.map((f) => `<span class="badge flag">${esc(f)}</span>`).join('')}
+        ${z.emotions.slice(0, 4).map((e) => `<span class="badge emotion">${esc(e)}</span>`).join('')}
+      </div>
+    </div>`).join('')
+  $('zcount').textContent = `(${result.zettels.length}, by weight)`
+
+  const tun = result.tunnels.slice(0, 12)
+  $('tunnelSec').hidden = tun.length === 0
+  $('tunnels').innerHTML = tun.map((t) =>
+    `<span>#${esc(t.from)} ⟷ #${esc(t.to)} <b>${esc(t.label)}</b></span>`).join('')
+
+  renderInject()
+}
+
+function renderInject() {
+  if (!result) return
+  $('injectSec').hidden = false
+  const budget = parseInt($('budget').value, 10)
+  const out = injectContext(result, { maxTokenBudget: budget, format: fmt })
+  $('inject').textContent = out
+  $('budgetVal').textContent = String(budget)
+}
+
+function ask(e) {
+  e.preventDefault()
+  if (!result) return
+  const q = $('q').value.trim()
+  if (!q) return
+  const t0 = performance.now()
+  hits = recall(result, q, { topK: 5 })
+  const ctx = recallContext(result, q, { topK: 5, maxTokens: 600 })
+  const ms = performance.now() - t0
+  $('answerSec').hidden = false
+  const tok = estimateTokens(ctx)
+  $('answerMeta').textContent = `— ${hits.length} hits, ${tok} tokens, ${ms.toFixed(1)} ms, no model involved`
+  if (ctx.length === 0) {
+    $('answer').innerHTML = '<div class="meta">no matching memory — try terms that appear in the text</div>'
+  } else {
+    // highlight query terms in the recalled passages
+    const terms = q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2)
+    let html = esc(ctx)
+    for (const t of [...new Set(terms)]) {
+      html = html.replace(new RegExp(`(${t.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}[a-z]*)`, 'gi'), '<mark>$1</mark>')
+    }
+    $('answer').innerHTML = `<div class="meta">passages recalled from the compressed memory (paste into your LLM prompt):</div>${html}`
+  }
+  render()
+}
+
+$('input').addEventListener('input', () => {
+  clearTimeout(debounce)
+  debounce = setTimeout(rebuild, 250)
+})
+$('askForm').addEventListener('submit', ask)
+$('loadSample').addEventListener('click', () => {
+  $('input').value = SAMPLE
+  $('q').value = 'what did we decide about authentication?'
+  rebuild()
+})
+$('clearBtn').addEventListener('click', () => { $('input').value = ''; rebuild() })
+$('budget').addEventListener('input', renderInject)
+$('fmtTabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-fmt]')
+  if (!b) return
+  fmt = b.dataset.fmt
+  for (const x of $('fmtTabs').querySelectorAll('button')) x.classList.toggle('active', x === b)
+  renderInject()
+})
+$('copyOut').addEventListener('click', () => navigator.clipboard.writeText($('inject').textContent))
+
+// start with the sample so the first impression is instant
+$('input').value = SAMPLE
+$('q').value = 'what did we decide about authentication?'
+rebuild()
+</script>
+</body>
+</html>

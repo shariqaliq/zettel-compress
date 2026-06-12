@@ -60,7 +60,8 @@
     "bench:llm": "tsx bench/qa-llm.ts",
     "check:zerodep": "node -e \"const d = require('./package.json').dependencies || {}; const k = Object.keys(d); if (k.length) { console.error('Zero-dependency check failed — runtime dependencies found: ' + k.join(', ')); process.exit(1) }\"",
     "prepublishOnly": "npm run check:zerodep && npm run build && npm run test && npm run typecheck",
-    "bench:locomo": "tsx bench/locomo.ts"
+    "bench:locomo": "tsx bench/locomo.ts",
+    "build:playground": "esbuild src/index.ts --bundle --format=esm --minify --outfile=playground/zettel-compress.min.js"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
