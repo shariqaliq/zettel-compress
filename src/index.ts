@@ -1,4 +1,4 @@
-import { chunkText } from './chunker.js'
+import { chunkText, normalizeText } from './chunker.js'
 import { detectEntities, buildEntityIndex } from './entity-detector.js'
 import { resolveCoreferences } from './coreference.js'
 import { extractTopics } from './topic-extractor.js'
@@ -78,7 +78,8 @@ export function normalizeWeights(zettels: Zettel[], temperature = 0.5): void {
 }
 
 export function compress(text: string, options?: CompressOptions): CompressResult {
-  const chunks = chunkText(text, options)
+  const normalized = normalizeText(text)
+  const chunks = chunkText(normalized, options)
 
   if (chunks.length === 0) {
     return {
@@ -100,7 +101,7 @@ export function compress(text: string, options?: CompressOptions): CompressResul
   const entityIndex = buildEntityIndex(allEntityNames)
 
   // Pass 2: build each zettel
-  let zettels = chunks.map((chunk, i) => {
+  let zettels: Zettel[] = chunks.map((chunk, i) => {
     const entities = chunkEntities[i] ?? []
     const topics = extractTopics(chunk.text, options?.minTopicFrequency, options?.stopWords)
     const quote = selectKeySentence(chunk.text)
@@ -116,6 +117,8 @@ export function compress(text: string, options?: CompressOptions): CompressResul
       weight,
       emotions,
       flags,
+      sourceStart: chunk.charStart,
+      sourceEnd: chunk.charEnd,
     }
   })
 
@@ -155,6 +158,8 @@ export function compress(text: string, options?: CompressOptions): CompressResul
       options?.date !== undefined ? { date: options.date } : {},
       options?.title !== undefined ? { title: options.title } : {},
       warnings !== undefined ? { warnings } : {},
+      // source enables provenance-expanded recall; offsets index into it
+      options?.keepSource !== false ? { source: normalized } : {},
     ),
   }
 }
@@ -186,10 +191,15 @@ export function mergeResults(results: CompressResult[]): CompressResult {
   mergedIndex.nameToCode = rebuiltIndex.nameToCode
   mergedIndex.codeToName = rebuiltIndex.codeToName
 
-  // Re-index zettel ids globally
+  // Re-index zettel ids globally. Source offsets reference each result's own
+  // text, which a merged result no longer has — drop them rather than let
+  // them point into the wrong document.
   let globalIndex = 1
   const mergedZettels = results.flatMap((r) =>
-    r.zettels.map((z) => ({ ...z, id: String(globalIndex++).padStart(3, '0') })),
+    r.zettels.map((z) => {
+      const { sourceStart: _s, sourceEnd: _e, ...rest } = z
+      return { ...rest, id: String(globalIndex++).padStart(3, '0') }
+    }),
   )
 
   const mergedTunnels = buildTunnels(mergedZettels, mergedIndex)
@@ -420,8 +430,8 @@ export function injectContext(result: CompressResult, options?: InjectOptions): 
 
 export { encode, decode, encodeZettelLine, encodeTunnelLine } from './encoder.js'
 export { wakeUp, topZettels } from './layer1.js'
-export { recall } from './recall.js'
-export type { RecallOptions } from './recall.js'
+export { recall, recallContext } from './recall.js'
+export type { RecallOptions, RecallContextOptions } from './recall.js'
 export { CompressStream } from './stream.js'
 export type { StreamOptions } from './stream.js'
 export { ALL_FLAGS, ALL_EMOTIONS } from './types.js'

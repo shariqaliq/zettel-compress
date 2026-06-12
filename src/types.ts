@@ -52,6 +52,10 @@ export interface Zettel {
   weight: number
   emotions: EmotionName[]
   flags: FlagName[]
+  /** Start offset of the source chunk in the normalized input text */
+  sourceStart?: number
+  /** End offset of the source chunk in the normalized input text */
+  sourceEnd?: number
 }
 
 export interface Tunnel {
@@ -76,6 +80,11 @@ export interface CompressResult {
     title?: string
     /** Non-fatal problems found while decoding (malformed lines, unknown tokens) */
     warnings?: string[]
+    /**
+     * Normalized input text — zettel source offsets index into this. Kept in
+     * memory for provenance-expanded recall; never serialized into AAAK.
+     */
+    source?: string
   }
 }
 
@@ -108,6 +117,12 @@ export interface CompressOptions {
   dedupeThreshold?: number
   /** Use entity names in tunnel labels (Alice+Bob) instead of codes (ALC+BBB) */
   verboseLabels?: boolean
+  /**
+   * Keep the normalized input text on meta.source so recallContext() can
+   * return full source passages instead of single quotes (default true).
+   * Set false to minimize the in-memory result size.
+   */
+  keepSource?: boolean
 }
 
 export interface InjectOptions {

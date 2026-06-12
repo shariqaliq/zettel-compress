@@ -1,4 +1,4 @@
-import { chunkText } from './chunker.js'
+import { chunkText, normalizeText } from './chunker.js'
 import { detectEntities, extendEntityIndex } from './entity-detector.js'
 import { resolveCoreferences } from './coreference.js'
 import { extractTopics } from './topic-extractor.js'
@@ -9,8 +9,8 @@ import { buildTunnels } from './tunnel-builder.js'
 import { dedupeTokens } from './dedupe.js'
 import { exactJaccard } from './minhash.js'
 import { normalizeWeights, blendCentrality } from './index.js'
-import { recall } from './recall.js'
-import type { RecallOptions } from './recall.js'
+import { recall, recallContext } from './recall.js'
+import type { RecallOptions, RecallContextOptions } from './recall.js'
 import type {
   CompressOptions,
   CompressResult,
@@ -58,6 +58,8 @@ export class CompressStream {
   private idCounter = 0
   private totalInput = 0
   private recentEntities: string[] = []
+  /** normalized concatenation of all pushed messages — zettel offsets index into it */
+  private sourceLog = ''
 
   constructor(options?: StreamOptions) {
     this.options = options ?? {}
@@ -70,8 +72,12 @@ export class CompressStream {
   push(text: string): void {
     this.turn++
     this.totalInput += text.length
-    const chunks = chunkText(text, this.options)
+    const normalized = normalizeText(text)
+    const chunks = chunkText(normalized, this.options)
     if (chunks.length === 0) return
+
+    const base = this.sourceLog.length === 0 ? 0 : this.sourceLog.length + 2
+    this.sourceLog += (this.sourceLog.length === 0 ? '' : '\n\n') + normalized
 
     const detected = chunks.map((c) => detectEntities(c.text, this.options.minEntityFrequency))
 
@@ -102,6 +108,8 @@ export class CompressStream {
         emotions,
         flags,
         turn: this.turn,
+        sourceStart: base + chunk.charStart,
+        sourceEnd: base + chunk.charEnd,
       }
 
       // A near-duplicate of an existing zettel refreshes that zettel's
@@ -177,6 +185,9 @@ export class CompressStream {
       weight: Math.round(this.decayedWeight(z) * 100) / 100,
       emotions: [...z.emotions],
       flags: [...z.flags],
+      ...(z.sourceStart !== undefined && z.sourceEnd !== undefined
+        ? { sourceStart: z.sourceStart, sourceEnd: z.sourceEnd }
+        : {}),
     }))
     const tunnels = buildTunnels(
       zettels,
@@ -199,11 +210,18 @@ export class CompressStream {
         { inputLength: this.totalInput, chunkCount: zettels.length },
         this.options.date !== undefined ? { date: this.options.date } : {},
         this.options.title !== undefined ? { title: this.options.title } : {},
+        this.options.keepSource !== false && this.sourceLog.length > 0
+          ? { source: this.sourceLog }
+          : {},
       ),
     }
   }
 
   recall(query: string, options?: RecallOptions): Zettel[] {
     return recall(this.snapshot(), query, options)
+  }
+
+  recallContext(query: string, options?: RecallContextOptions): string {
+    return recallContext(this.snapshot(), query, options)
   }
 }

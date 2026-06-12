@@ -3,6 +3,11 @@ import type { TextChunk, CompressOptions } from './types.js'
 const DEFAULT_CHUNK_SIZE = 800
 const DEFAULT_CHUNK_OVERLAP = 100
 
+/** Line-ending normalization all offsets are relative to. */
+export function normalizeText(text: string): string {
+  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
 interface ParaSpan {
   start: number
   end: number
@@ -49,7 +54,7 @@ export function chunkText(
   const chunkSize = options?.chunkSize ?? DEFAULT_CHUNK_SIZE
   const chunkOverlap = options?.chunkOverlap ?? DEFAULT_CHUNK_OVERLAP
 
-  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const normalized = normalizeText(text)
   if (normalized.trim().length === 0) return []
 
   // Paragraph spans carry real offsets into the normalized text, so

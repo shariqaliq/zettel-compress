@@ -86,8 +86,13 @@ export function encodeZettelLine(z: Zettel, entityIndex: EntityIndex): string {
   const weight = z.weight.toFixed(2)
   const emotions = z.emotions.join('+')
   const flags = z.flags.join('+')
+  // optional trailing source-span field (start-end into the original text)
+  const span =
+    z.sourceStart !== undefined && z.sourceEnd !== undefined
+      ? `|${z.sourceStart}-${z.sourceEnd}`
+      : ''
 
-  return `${z.id}:${codes}|${topics}|"${escapeQuote(z.quote)}"|${weight}|${emotions}|${flags}`
+  return `${z.id}:${codes}|${topics}|"${escapeQuote(z.quote)}"|${weight}|${emotions}|${flags}${span}`
 }
 
 export function encodeTunnelLine(t: Tunnel): string {
@@ -220,6 +225,8 @@ function parseZettelV2(line: string, ctx: ParseContext): Zettel | null {
       return name
     })
 
+  const spanMatch = /^(\d+)-(\d+)$/.exec(after[4] ?? '')
+
   return {
     id,
     entities,
@@ -228,6 +235,9 @@ function parseZettelV2(line: string, ctx: ParseContext): Zettel | null {
     weight: Math.round(weight * 100) / 100,
     emotions,
     flags,
+    ...(spanMatch
+      ? { sourceStart: parseInt(spanMatch[1]!, 10), sourceEnd: parseInt(spanMatch[2]!, 10) }
+      : {}),
   }
 }
 

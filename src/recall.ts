@@ -1,4 +1,5 @@
 import type { CompressResult, Zettel } from './types.js'
+import { estimateTokens } from './index.js'
 
 export interface RecallOptions {
   /** Maximum zettels returned (default 5) */
@@ -51,8 +52,19 @@ function tokenize(text: string): string[] {
     .map(fold)
 }
 
-function zettelTokens(z: Zettel): string[] {
-  return tokenize(`${z.quote} ${z.topics.join(' ')} ${z.entities.join(' ')}`)
+function spanText(z: Zettel, source: string | undefined): string | undefined {
+  if (source === undefined || z.sourceStart === undefined || z.sourceEnd === undefined) {
+    return undefined
+  }
+  return source.slice(z.sourceStart, z.sourceEnd)
+}
+
+// When the source text is available, BM25 indexes the zettel's full source
+// chunk — detail questions match content the one-sentence quote dropped.
+// Without source (e.g. decoded AAAK), it falls back to quote+topics+entities.
+function zettelTokens(z: Zettel, source: string | undefined): string[] {
+  const body = spanText(z, source) ?? z.quote
+  return tokenize(`${body} ${z.topics.join(' ')} ${z.entities.join(' ')}`)
 }
 
 // Okapi BM25 with the standard k1=1.2, b=0.75
@@ -140,7 +152,8 @@ export function recall(
   const qTokens = tokenize(query)
   if (qTokens.length === 0) return []
 
-  const docs = zettels.map(zettelTokens)
+  const source = result.meta?.source
+  const docs = zettels.map((z) => zettelTokens(z, source))
   const bm25 = bm25Scores(docs, qTokens)
   const maxB = Math.max(...bm25)
   if (maxB <= 0) return []
@@ -160,4 +173,73 @@ export function recall(
     .sort((a, b) => b.s - a.s || a.z.id.localeCompare(b.z.id))
     .slice(0, topK)
     .map((x) => x.z)
+}
+
+export interface RecallContextOptions extends RecallOptions {
+  /** Hard cap on the assembled context (built-in token estimate) */
+  maxTokens?: number
+  /** Source text override when result.meta.source is absent (e.g. after decode) */
+  source?: string
+}
+
+interface Span {
+  start: number
+  end: number
+}
+
+function mergeSpans(spans: Span[]): Span[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start)
+  const merged: Span[] = []
+  for (const s of sorted) {
+    const last = merged[merged.length - 1]
+    if (last && s.start <= last.end + 2) {
+      last.end = Math.max(last.end, s.end)
+    } else {
+      merged.push({ ...s })
+    }
+  }
+  return merged
+}
+
+/**
+ * Small-to-big retrieval: match on the compact zettel index, return the full
+ * source passages the hits came from — the parent-document pattern. Spans of
+ * overlapping hits merge, the token budget admits passages in rank order, and
+ * the final context is assembled in document order so narrative and temporal
+ * flow survive. Falls back to quotes when no source text is available.
+ */
+export function recallContext(
+  result: CompressResult,
+  query: string,
+  options?: RecallContextOptions,
+): string {
+  const source = options?.source ?? result.meta?.source
+  const hits = recall(result, query, options)
+  if (hits.length === 0) return ''
+
+  if (source === undefined) {
+    const quotes = hits.map((z) => z.quote)
+    if (options?.maxTokens === undefined) return quotes.join('\n')
+    const kept: string[] = []
+    for (const q of quotes) {
+      if (estimateTokens([...kept, q].join('\n')) > options.maxTokens) break
+      kept.push(q)
+    }
+    return kept.join('\n')
+  }
+
+  // budget admits passages in rank order; output assembles in document order
+  let accepted: Span[] = []
+  for (const z of hits) {
+    if (z.sourceStart === undefined || z.sourceEnd === undefined) continue
+    const candidate = mergeSpans([...accepted, { start: z.sourceStart, end: z.sourceEnd }])
+    if (options?.maxTokens !== undefined) {
+      const text = candidate.map((s) => source.slice(s.start, s.end)).join('\n\n')
+      if (estimateTokens(text) > options.maxTokens && accepted.length > 0) continue
+    }
+    accepted = candidate
+  }
+
+  if (accepted.length === 0) return hits.map((z) => z.quote).join('\n')
+  return accepted.map((s) => source.slice(s.start, s.end)).join('\n\n')
 }
