@@ -3,9 +3,9 @@
 [![npm](https://img.shields.io/npm/v/zettel-compress)](https://www.npmjs.com/package/zettel-compress)
 [![license](https://img.shields.io/npm/l/zettel-compress)](./LICENSE)
 
-Deterministic, LLM-free memory engine for LLM apps: compresses text into structured **zettel memory units** (entities, topics, key quotes, emotion signals, importance flags, and a tunnel graph linking related moments), then lets you **filter, budget, stream, and search** that memory — all without a single model call.
+**Memory for LLM apps that runs anywhere your code runs — offline, on-device, at the edge.** Compresses conversation history into structured, searchable memory and hands your model exactly the context it needs. **Zero external calls. Zero infrastructure. Zero dependencies. 18 kB gzipped.**
 
-**Zero runtime dependencies. Works in Node.js, browsers, Cloudflare Workers, and Vercel Edge. Same input, same output, every time.**
+And the property nothing else in this space has: **it's deterministic** — the same messages produce byte-identical memory, every time, on every machine. Memory you can snapshot-test, replay in CI, diff in code review, and trust in an air-gapped deployment.
 
 **[▶ Try it in the playground](https://shariqaliq.github.io/zettel-compress/)** — the full engine runs client-side in your tab (14 kB gzipped): paste a conversation, watch it become structured memory, ask it questions.
 
@@ -86,20 +86,32 @@ ranking.
 
 ---
 
-## How it compares
+## When to use it — and when not to
 
-| | `zettel-compress` | mem0 / Zep | LangChain memory | embeddings RAG |
-|---|---|---|---|---|
-| Model calls needed | **none** | every write | every summary | every index/query |
-| Marginal cost per message | **$0** | API cost | API cost | API cost |
-| Deterministic / replayable | **yes, byte-exact** | no | no | no |
-| Edge / browser runtime | **yes** | no (service) | partial | rarely |
-| Query-time search | BM25 + graph | vector | no | vector |
-| Structured output (entities, flags, links) | **yes** | partial | no | no |
-| Lossless serialization format | **yes (AAAK)** | no | no | no |
-| Semantic paraphrase matching | no (lexical) | yes | — | **yes** |
+**Use zettel-compress when your constraints look like this:**
 
-The trade is explicit: zettel-compress matches on words and structure, not meaning — paraphrase-heavy queries favor embeddings. In exchange you get zero cost, zero infrastructure, full determinism, and edge compatibility. For conversation memory and decision tracking, the benchmark says that trade works.
+- **Offline / on-device / air-gapped** — local-first apps, privacy-bound deployments, anywhere user text must never leave the process
+- **Edge runtimes** — Cloudflare Workers, Vercel Edge, browsers: no vector DB to stand up, no embedding service to call, nothing to operate
+- **Determinism matters** — agent test suites, replayable sessions, auditable memory; byte-identical output is something no LLM- or embedding-based memory can offer even in principle
+- **No external calls allowed** — compliance, latency budgets measured in milliseconds, or simply zero appetite for another vendor dependency
+
+**Use something else when:**
+
+- You want maximum recall quality and can run infrastructure → embeddings RAG (pgvector + any embedding model) handles paraphrase ("pottery class" ↔ "ceramics workshop") better than lexical matching ever will
+- You want managed memory with fact-updating and contradiction handling → mem0 / Zep are good products; they trade API calls, latency, and nondeterminism for higher QA scores
+- Your conversations are short → a sliding window of recent messages is simpler and good enough
+
+| | `zettel-compress` | mem0 / Zep | embeddings RAG |
+|---|---|---|---|
+| External calls | **none, ever** | every write | every index + query |
+| Infrastructure | **none** | hosted service | vector store |
+| Runs offline / on-device / edge | **yes** | no | rarely |
+| Deterministic / replayable / testable | **byte-exact** | no | no |
+| Lossless text serialization (diffable memory) | **yes (AAAK)** | no | no |
+| Semantic paraphrase matching | no — lexical + graph | yes | **yes** |
+| LoCoMo QA (our measurement / their reported) | 41.6 F1 | ~67 (LLM-judged) | unmeasured here |
+
+The trade is explicit and we publish the numbers on it.
 
 ---
 
@@ -111,12 +123,18 @@ Text is chunked on paragraph boundaries (overlap snaps to word boundaries; every
 - **topics** — key terms with CamelCase/ALL-CAPS/hyphenation boosts
 - **quote** — the most information-dense sentence (TextRank blended with decision-word density; falls back gracefully on lowercase chat text)
 - **weight** — importance in [0, 1], rank-normalized with tie-aware midranks (equal raw scores always get equal weights; relative within a result)
-- **emotions** — 30 states via word-boundary keyword matching with negation scope
 - **flags** — `DECISION | ORIGIN | CORE | PIVOT | GENESIS | TECHNICAL`
+- **emotions** — 30 states via word-boundary lexicons with negation scope (a useful filtering signal, not sentiment analysis — calibrate expectations accordingly)
 
 **Tunnels** link zettels sharing entities/topics above a Jaccard threshold (capped per zettel). `recall()` runs BM25 over quotes+topics+entities and expands hits one associative hop along tunnels with personalized PageRank.
 
 ---
+
+## Documentation
+
+- **[Getting started](https://github.com/shariqaliq/zettel-compress/blob/master/docs/getting-started.md)** — core concepts, the three verbs (compress → recall → inject), persistence, options
+- **[Integration recipes](https://github.com/shariqaliq/zettel-compress/blob/master/docs/recipes.md)** — chatbot memory loop, Vercel AI SDK, Cloudflare Workers + KV, browser/local-first, streams, multi-session, exact token budgets
+- **[Deterministic testing](https://github.com/shariqaliq/zettel-compress/blob/master/docs/testing.md)** — snapshot-test and replay your agent's memory in CI (the thing only deterministic memory can do)
 
 ## Install
 

@@ -1,7 +1,7 @@
 {
   "name": "zettel-compress",
   "version": "0.3.0",
-  "description": "Deterministic LLM-free text compression into structured zettel memory units with emotion weights, entity codes, and tunnel links",
+  "description": "Deterministic memory engine for LLM apps — compress, search, and inject conversation memory offline, on-device, or at the edge. Zero external calls, zero infrastructure, zero dependencies.",
   "keywords": [
     "llm",
     "context-compression",
@@ -14,7 +14,15 @@
     "ai-sdk",
     "edge-compatible",
     "zettel",
-    "aaak"
+    "aaak",
+    "offline",
+    "local-first",
+    "edge",
+    "deterministic",
+    "agent-memory",
+    "retrieval",
+    "rag",
+    "bm25"
   ],
   "author": {
     "name": "shariq",
