@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { compress, injectContext, encode, decode, wakeUp, topZettels, mergeResults } from '../src/index.js'
+import {
+  compress,
+  injectContext,
+  encode,
+  decode,
+  wakeUp,
+  topZettels,
+  mergeResults,
+  estimateTokens as libEstimateTokens,
+} from '../src/index.js'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -267,7 +276,7 @@ describe('token budget (issue #2)', () => {
     const result = compress(DOC_LARGE)
     for (const budget of [100, 300, 500, 1000]) {
       const out = injectContext(result, { maxTokenBudget: budget })
-      expect(estimateTokens(out)).toBeLessThanOrEqual(budget)
+      expect(libEstimateTokens(out)).toBeLessThanOrEqual(budget)
     }
   })
 
@@ -275,7 +284,7 @@ describe('token budget (issue #2)', () => {
     const result = compress(DOC_LARGE)
     for (const budget of [300, 500, 1000]) {
       const out = injectContext(result, { maxTokenBudget: budget })
-      expect(estimateTokens(out)).toBeGreaterThanOrEqual(budget * 0.65)
+      expect(libEstimateTokens(out)).toBeGreaterThanOrEqual(budget * 0.65)
     }
   })
 
@@ -287,16 +296,18 @@ describe('token budget (issue #2)', () => {
     }
   })
 
-  it('keeps the top-ranked zettels when budget forces selection', () => {
-    // ranking = 0.7·weight + 0.3·signal-flag bonus (DECISION/ORIGIN/CORE)
+  it('budget selection always includes the top-ranked zettel when it fits', () => {
+    // ranking = 0.7·weight + 0.3·signal-flag bonus (DECISION/ORIGIN/CORE);
+    // first-fit-decreasing may skip oversized zettels, but rank one is
+    // considered first and must be present whenever it fits the budget alone
     const score = (z: { weight: number; flags: string[] }) =>
       0.7 * z.weight + (z.flags.some((f) => ['DECISION', 'ORIGIN', 'CORE'].includes(f)) ? 0.3 : 0)
     const result = compress(DOC_LARGE)
     const out = injectContext(result, { maxTokenBudget: 300, format: 'json' })
-    const kept = JSON.parse(out).zettels as { weight: number; flags: string[] }[]
-    const allScores = result.zettels.map(score).sort((a, b) => b - a)
-    const expectedTop = allScores.slice(0, kept.length)
-    expect(kept.map(score).sort((a, b) => b - a)).toEqual(expectedTop)
+    const kept = JSON.parse(out).zettels as { id: string; weight: number; flags: string[] }[]
+    expect(kept.length).toBeGreaterThan(0)
+    const bestScore = Math.max(...result.zettels.map(score))
+    expect(Math.max(...kept.map(score))).toBe(bestScore)
   })
 
   it('smaller budget always produces fewer or equal tokens than larger budget', () => {
@@ -304,6 +315,19 @@ describe('token budget (issue #2)', () => {
     const out300 = estimateTokens(injectContext(result, { maxTokenBudget: 300 }))
     const out600 = estimateTokens(injectContext(result, { maxTokenBudget: 600 }))
     expect(out300).toBeLessThanOrEqual(out600)
+  })
+
+  it('only serializes entities of selected zettels — E: line stays bounded', () => {
+    const result = compress(DOC_LARGE)
+    const out = injectContext(result, { maxZettels: 5 })
+    const eLine = out.split('\n').find((l) => l.startsWith('E:')) ?? ''
+    const selectedEntities = new Set(
+      (JSON.parse(injectContext(result, { maxZettels: 5, format: 'json' })).zettels as {
+        entities: string[]
+      }[]).flatMap((z) => z.entities),
+    )
+    const entries = eLine.length > 2 ? eLine.slice(2).split(';').length : 0
+    expect(entries).toBeLessThanOrEqual(selectedEntities.size)
   })
 
   it('only emits tunnels whose both endpoints are selected', () => {

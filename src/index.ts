@@ -15,6 +15,7 @@ import type {
   Zettel,
   Tunnel,
   FlagName,
+  EntityIndex,
 } from './types.js'
 
 /**
@@ -242,10 +243,13 @@ function applyGuarantees(selected: Zettel[], candidates: Zettel[], flags: FlagNa
   return out
 }
 
-/** Whitespace-word token estimate — the same measure the budget enforces. */
+/**
+ * Token estimate the budget enforces: word count with a character floor, so
+ * dense whitespace-free runs (AAAK code lines) cannot hide from the budget.
+ */
 export function estimateTokens(text: string): number {
   const words = text.split(/\s+/).filter(Boolean).length
-  return Math.ceil(words * 1.3)
+  return Math.ceil(Math.max(words * 1.3, text.length / 4))
 }
 
 function markdownLine(z: Zettel): string {
@@ -259,6 +263,22 @@ function tunnelsAmong(tunnels: Tunnel[], zettels: Zettel[]): Tunnel[] {
   return tunnels.filter((t) => ids.has(t.from) && ids.has(t.to))
 }
 
+// Only the selected zettels' entities belong in the E: index line — on a
+// large document the full index alone can dwarf any sane token budget
+function indexFor(zettels: Zettel[], full: EntityIndex): EntityIndex {
+  const names = new Set(zettels.flatMap((z) => z.entities))
+  const nameToCode: Record<string, string> = {}
+  const codeToName: Record<string, string> = {}
+  for (const name of names) {
+    const code = full.nameToCode[name]
+    if (code !== undefined) {
+      nameToCode[name] = code
+      codeToName[code] = name
+    }
+  }
+  return { nameToCode, codeToName }
+}
+
 function renderOutput(
   result: CompressResult,
   zettels: Zettel[],
@@ -267,7 +287,12 @@ function renderOutput(
   const tunnels = tunnelsAmong(result.tunnels, zettels)
   if (format === 'json') return JSON.stringify({ zettels, tunnels }, null, 2)
   if (format === 'markdown') return zettels.map(markdownLine).join('\n\n')
-  return encode({ ...result, zettels, tunnels })
+  return encode({
+    ...result,
+    zettels,
+    tunnels,
+    entityIndex: indexFor(zettels, result.entityIndex),
+  })
 }
 
 // Greedy budget fit: zettels enter in weight order, each measured as it would
@@ -284,9 +309,11 @@ function fitToBudget(
   )
   const selected: Zettel[] = []
 
+  // first-fit-decreasing: an oversized zettel doesn't end selection — lower
+  // ranked but smaller zettels can still use the remaining budget
   for (const z of sorted) {
     const attempt = renderOutput(result, [...selected, z], format)
-    if (estimateTokens(attempt) > budget) break
+    if (estimateTokens(attempt) > budget) continue
     selected.push(z)
   }
 
