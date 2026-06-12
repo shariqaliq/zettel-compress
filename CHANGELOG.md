@@ -3,6 +3,13 @@
 All notable changes to zettel-compress. Benchmark numbers are reproducible
 with `npm run bench` (deterministic) and `npm run bench:llm` (model-judged).
 
+## 0.2.1 — 2026-06-12
+
+### Added
+- GitHub Actions publish workflow: pushing a `v*` tag automatically runs
+  `prepublishOnly` (zero-dep check, build, tests, typecheck) and publishes
+  to npm via `NPM_TOKEN` — no manual `npm publish` needed for future releases.
+
 ## 0.2.0 — 2026-06-12
 
 ### Added
