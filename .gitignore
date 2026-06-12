@@ -12,3 +12,4 @@ LAUNCH_KIT.md
 
 # benchmark datasets (downloaded, large)
 bench/data/
+bench/logs/

@@ -4,6 +4,7 @@ export {
   compress,
   injectContext,
   recall,
+  recallContext,
   encode,
   decode,
   estimateTokens,
