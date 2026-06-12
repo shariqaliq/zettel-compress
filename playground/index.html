@@ -65,6 +65,12 @@
   }
   .answer mark { background: var(--mark); color: #ffd866; border-radius: 3px; padding: 0 2px; }
   .answer .meta { color: var(--dim); font-family: ui-sans-serif, system-ui; font-size: 12.5px; margin-bottom: 8px; }
+  .answer .q { color: var(--text); font-weight: 600; }
+  .answer .lbl { display: block; font: 600 10.5px ui-sans-serif, system-ui; letter-spacing: .07em; text-transform: uppercase; color: var(--green); margin: 10px 0 4px; }
+  .answer .rest { opacity: .85; margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 2px; }
+  .answer .rest .lbl { color: var(--dim); }
+  @keyframes flashIn { from { box-shadow: 0 0 0 2px var(--green); } to { box-shadow: 0 0 0 0 transparent; } }
+  .answer.flash { animation: flashIn .9s ease-out; }
   .zgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
   .zettel {
     background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
@@ -246,30 +252,56 @@ function renderInject() {
   $('budgetVal').textContent = String(budget)
 }
 
+// single-pass highlight: escape HTML first, then mark all query terms at once
+function hl(text, q) {
+  const safe = esc(text)
+  const terms = [...new Set(q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2))]
+  if (terms.length === 0) return safe
+  const alt = terms.map((t) => t.replace(/[\^$.*+?()[\]{}|\\]/g, '\\$&')).join('|')
+  return safe.replace(new RegExp(`\\b(?:${alt})[a-z]*`, 'gi'), '<mark>$&</mark>')
+}
+
 function ask(e) {
   e.preventDefault()
   if (!result) return
   const q = $('q').value.trim()
   if (!q) return
-  const t0 = performance.now()
-  hits = recall(result, q, { topK: 5 })
-  const ctx = recallContext(result, q, { topK: 5, maxTokens: 600 })
-  const ms = performance.now() - t0
-  $('answerSec').hidden = false
-  const tok = estimateTokens(ctx)
-  $('answerMeta').textContent = `— ${hits.length} hits, ${tok} tokens, ${ms.toFixed(1)} ms, no model involved`
-  if (ctx.length === 0) {
-    $('answer').innerHTML = '<div class="meta">no matching memory — try terms that appear in the text</div>'
-  } else {
-    // highlight query terms in the recalled passages
-    const terms = q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2)
-    let html = esc(ctx)
-    for (const t of [...new Set(terms)]) {
-      html = html.replace(new RegExp(`(${t.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}[a-z]*)`, 'gi'), '<mark>$1</mark>')
+  try {
+    const t0 = performance.now()
+    hits = recall(result, q, { topK: 5 })
+    const best = hits.length > 0 ? recallContext(result, q, { topK: 1 }) : ''
+    const full = hits.length > 0 ? recallContext(result, q, { topK: 5, maxTokens: 600 }) : ''
+    const ms = performance.now() - t0
+
+    $('answerSec').hidden = false
+    const panel = $('answer')
+    if (hits.length === 0) {
+      $('answerMeta').textContent = ''
+      panel.innerHTML =
+        `<div class="meta">Q: <span class="q">${esc(q)}</span></div>` +
+        `<div class="meta">no matching memory — this engine matches words and structure (no model), ` +
+        `so try terms that appear in the text, e.g. "timeout", "Redis", "audit log".</div>`
+    } else {
+      const rest = full === best ? '' : full.replace(best, '').replace(/^\n+|\n+$/g, '')
+      $('answerMeta').textContent =
+        `— ${hits.length} passages, ${estimateTokens(full)} tokens, ${ms.toFixed(2)} ms, retrieval only`
+      panel.innerHTML =
+        `<div class="meta">Q: <span class="q">${esc(q)}</span> — these passages are the context ` +
+        `you'd hand your LLM (this playground retrieves; it never calls a model):</div>` +
+        `<span class="lbl">best match</span>${hl(best, q)}` +
+        (rest ? `<div class="rest"><span class="lbl">related context (graph hops)</span>${hl(rest, q)}</div>` : '')
     }
-    $('answer').innerHTML = `<div class="meta">passages recalled from the compressed memory (paste into your LLM prompt):</div>${html}`
+    // make every click visibly do something, even when the result is unchanged
+    panel.classList.remove('flash')
+    void panel.offsetWidth
+    panel.classList.add('flash')
+    $('answerSec').scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    render()
+  } catch (err) {
+    $('answerSec').hidden = false
+    $('answerMeta').textContent = ''
+    $('answer').innerHTML = `<div class="meta">unexpected error — please report it: ${esc(String(err))}</div>`
   }
-  render()
 }
 
 $('input').addEventListener('input', () => {
