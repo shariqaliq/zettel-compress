@@ -1,6 +1,6 @@
 {
   "name": "zettel-compress",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Deterministic LLM-free text compression into structured zettel memory units with emotion weights, entity codes, and tunnel links",
   "keywords": [
     "llm",
