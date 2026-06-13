@@ -56,6 +56,13 @@ export interface Zettel {
   sourceStart?: number
   /** End offset of the source chunk in the normalized input text */
   sourceEnd?: number
+  /**
+   * ISO-8601 date string (YYYY-MM-DD or YYYY-MM or YYYY) resolved from the
+   * chunk text. Absolute dates are taken directly; relative expressions
+   * ("yesterday", "last week") are resolved against the nearest preceding
+   * absolute date anchor in the text, then against CompressOptions.date.
+   */
+  resolvedDate?: string
 }
 
 export interface Tunnel {
@@ -69,10 +76,25 @@ export interface EntityIndex {
   codeToName: Record<string, string>
 }
 
+export interface Contradiction {
+  /** Earlier (superseded) zettel id */
+  earlier: string
+  /** Later (superseding) zettel id */
+  later: string
+  /** Shared entity or topic that links the two zettels */
+  sharedTopic: string
+  /** What kind of conflict signal fired */
+  signal: 'negation-flip' | 'value-change' | 'antonym'
+  /** One-line human-readable summary */
+  summary: string
+}
+
 export interface CompressResult {
   zettels: Zettel[]
   tunnels: Tunnel[]
   entityIndex: EntityIndex
+  /** Detected contradictions between DECISION-flagged zettels across chunks */
+  contradictions?: Contradiction[]
   meta?: {
     inputLength: number
     chunkCount: number

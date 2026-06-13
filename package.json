@@ -1,6 +1,6 @@
 {
   "name": "zettel-compress",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "description": "Deterministic memory engine for LLM apps — compress, search, and inject conversation memory offline, on-device, or at the edge. Zero external calls, zero infrastructure, zero dependencies.",
   "keywords": [
     "llm",

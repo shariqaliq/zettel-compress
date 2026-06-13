@@ -184,6 +184,15 @@ let hits = []
 let fmt = 'markdown'
 let debounce = null
 
+// Auto-select chunkSize so short conversations get multiple zettels
+function chunkSizeFor(text) {
+  const chars = text.length
+  if (chars < 1000) return 150
+  if (chars < 3000) return 300
+  if (chars < 8000) return 500
+  return 800
+}
+
 function rebuild() {
   const text = $('input').value
   if (text.trim().length === 0) {
@@ -192,7 +201,7 @@ function rebuild() {
     return
   }
   const t0 = performance.now()
-  result = compress(text)
+  result = compress(text, { chunkSize: chunkSizeFor(text) })
   const ms = performance.now() - t0
   result._ms = ms
   hits = []
@@ -269,7 +278,9 @@ function ask(e) {
   try {
     const t0 = performance.now()
     hits = recall(result, q, { topK: 5 })
-    const best = hits.length > 0 ? recallContext(result, q, { topK: 1 }) : ''
+    // best match: use the top hit's quote directly (concise, not full passage)
+    const bestQuote = hits.length > 0 ? hits[0].quote : ''
+    // full context: source passages for all hits, budget-capped
     const full = hits.length > 0 ? recallContext(result, q, { topK: 5, maxTokens: 600 }) : ''
     const ms = performance.now() - t0
 
@@ -282,13 +293,17 @@ function ask(e) {
         `<div class="meta">no matching memory — this engine matches words and structure (no model), ` +
         `so try terms that appear in the text, e.g. "timeout", "Redis", "audit log".</div>`
     } else {
-      const rest = full === best ? '' : full.replace(best, '').replace(/^\n+|\n+$/g, '')
+      // safe string subtraction: find bestQuote in full and slice around it
+      const bi = full.indexOf(bestQuote)
+      const rest = bi >= 0
+        ? (full.slice(0, bi) + full.slice(bi + bestQuote.length)).replace(/^\n+|\n+$/g, '')
+        : ''
       $('answerMeta').textContent =
         `— ${hits.length} passages, ${estimateTokens(full)} tokens, ${ms.toFixed(2)} ms, retrieval only`
       panel.innerHTML =
         `<div class="meta">Q: <span class="q">${esc(q)}</span> — these passages are the context ` +
         `you'd hand your LLM (this playground retrieves; it never calls a model):</div>` +
-        `<span class="lbl">best match</span>${hl(best, q)}` +
+        `<span class="lbl">best match</span>${hl(bestQuote, q)}` +
         (rest ? `<div class="rest"><span class="lbl">related context (graph hops)</span>${hl(rest, q)}</div>` : '')
     }
     // make every click visibly do something, even when the result is unchanged

@@ -1,36 +1,48 @@
 import type { EmotionName, FlagName } from './types.js'
 
 const EMOTION_KEYWORDS: Record<EmotionName, string[]> = {
-  conviction:    ['decided', 'committed', 'certain', 'determined', 'resolved', 'firm', 'unwavering', 'absolutely'],
-  grief:         ['lost', 'miss', 'sad', 'mourning', 'grief', 'heartbroken', 'devastated', 'loss'],
+  // Removed: 'resolved' (fires on bug/DNS resolved), 'absolutely' (discourse filler)
+  conviction:    ['decided', 'committed', 'certain', 'determined', 'firm', 'unwavering'],
+  // Removed: 'miss' (miss the point, miss a step — too ambiguous in tech)
+  grief:         ['lost', 'sad', 'mourning', 'grief', 'heartbroken', 'devastated', 'loss of'],
   joy:           ['happy', 'excited', 'wonderful', 'delighted', 'elated', 'thrilled', 'joyful', 'glad'],
   fear:          ['afraid', 'worried', 'scared', 'terrified', 'dread', 'panic', 'fearful', 'terror'],
-  hope:          ['hope', 'optimistic', 'looking forward', 'aspire', 'wish', 'bright', 'promise', 'hopeful'],
-  trust:         ['trust', 'rely', 'depend', 'confident', 'faith', 'assured', 'secure', 'reliable'],
-  wonder:        ['amazing', 'incredible', 'fascinating', 'curious', 'astonishing', 'remarkable', 'awe-inspiring'],
+  hope:          ['hope', 'optimistic', 'looking forward to', 'aspire', 'hopeful', 'bright future'],
+  trust:         ['trust', 'rely on', 'depend on', 'confident in', 'faith in', 'assured', 'reliable'],
+  wonder:        ['incredible', 'fascinating', 'curious', 'astonishing', 'remarkable', 'awe-inspiring'],
   rage:          ['angry', 'furious', 'hate', 'outraged', 'enraged', 'livid', 'infuriated', 'seething'],
-  exhaustion:    ['tired', 'burnt out', 'overwhelmed', 'drained', 'exhausted', 'depleted', 'weary', 'burnout'],
+  exhaustion:    ['burnt out', 'overwhelmed', 'drained', 'exhausted', 'depleted', 'weary', 'burnout'],
   shame:         ['ashamed', 'embarrassed', 'humiliated', 'mortified', 'disgraced', 'shameful'],
-  pride:         ['proud', 'accomplished', 'achieved', 'earned', 'succeeded', 'triumphant', 'excellence'],
-  nostalgia:     ['remember', 'used to', 'back then', 'childhood', 'memories', 'once upon', 'years ago', 'miss the'],
-  anxiety:       ['anxious', 'nervous', 'uneasy', 'restless', 'apprehensive', 'on edge', 'tense', 'stress'],
-  relief:        ['relieved', 'finally', 'at last', 'thankfully', 'unburdened', 'resolved', 'cleared'],
-  anticipation:  ['soon', 'upcoming', 'looking forward', 'preparing', 'planning', 'next', 'expecting', 'anticipate'],
-  frustration:   ['frustrated', 'annoyed', 'irritated', 'stuck', 'blocked', "can't", 'impossible', 'pointless'],
-  gratitude:     ['grateful', 'thankful', 'appreciate', 'thanks', 'blessed', 'indebted', 'gratitude'],
-  loneliness:    ['alone', 'lonely', 'isolated', 'no one', 'by myself', 'disconnected', 'abandoned', 'solitude'],
-  inspiration:   ['inspired', 'motivated', 'energized', 'sparked', 'ignited', 'driven', 'passionate', 'creative'],
-  confusion:     ['confused', 'unclear', 'unsure', 'uncertain', 'puzzled', 'baffled', "don't understand", 'lost'],
-  clarity:       ['clear', 'understood', 'realized', 'now i see', 'makes sense', 'obvious', 'enlightened', 'clarity'],
+  pride:         ['proud', 'accomplished', 'achieved', 'succeeded', 'triumphant', 'excellence'],
+  nostalgia:     ['used to', 'back then', 'childhood', 'memories', 'once upon', 'years ago', 'miss the old'],
+  // Removed: 'stress' (stress test, stress the point), 'tense' (tense situation ok but also grammar)
+  anxiety:       ['anxious', 'nervous', 'uneasy', 'restless', 'apprehensive', 'on edge', 'stressed out'],
+  // Removed: 'finally' (neutral temporal), 'resolved' (bug resolved), 'cleared' (queue cleared)
+  relief:        ['relieved', 'at last', 'thankfully', 'unburdened', 'weight off'],
+  // Removed: 'next' (fires everywhere), 'planning' (every project), 'soon' (too generic)
+  anticipation:  ['upcoming', 'looking forward to', 'preparing for', 'expecting', 'anticipate', 'cant wait'],
+  // Removed: "can't" (too generic — "can't reproduce", "can't merge")
+  frustration:   ['frustrated', 'annoyed', 'irritated', 'stuck on', 'blocked by', 'impossible to', 'pointless'],
+  // Removed: 'thanks' (social filler in every chat turn), 'blessed' (too broad)
+  gratitude:     ['grateful', 'thankful', 'appreciate', 'indebted', 'gratitude'],
+  // Removed: 'alone' ("alone this handles"), 'isolated' (isolated test, isolated env)
+  loneliness:    ['lonely', 'no one', 'by myself', 'disconnected', 'abandoned', 'solitude'],
+  inspiration:   ['inspired', 'motivated', 'energized', 'ignited', 'driven', 'passionate', 'creative'],
+  // Removed: 'lost' (ambiguous), 'unclear' (unclear requirement — not emotional)
+  confusion:     ['confused', 'unsure', 'uncertain', 'puzzled', 'baffled', "don't understand"],
+  // Removed: 'clear' ("clear the cache"), 'obvious' (dismissive not emotional), 'realized' (goes to PIVOT flag)
+  clarity:       ['now i see', 'makes sense now', 'enlightened', 'suddenly understood', 'clicked for me'],
   guilt:         ['guilty', 'regret', 'should have', "shouldn't have", 'my fault', 'blame myself', 'remorse'],
   awe:           ['awe', 'breathtaking', 'profound', 'transcendent', 'majestic', 'overwhelming beauty'],
-  regret:        ['wish i had', 'if only', 'missed opportunity', 'looking back', "could've", 'should have done'],
+  regret:        ['wish i had', 'if only', 'missed opportunity', 'looking back', "could've done", 'should have done'],
   determination: ['will not stop', 'never give up', 'keep going', 'persist', 'push through', 'no matter what'],
-  vulnerability: ['vulnerable', 'exposed', 'raw', 'open up', 'honest about', 'sharing', 'admit that'],
-  acceptance:    ['accepted', 'at peace', 'moved on', 'let go', 'embrace', 'okay with', 'come to terms'],
-  resistance:    ['resist', 'refuse', 'against', 'oppose', 'reject', 'push back', 'disagree', "won't"],
+  // Removed: 'sharing' ("we're sharing the config"), 'exposed' (exposed endpoint)
+  vulnerability: ['vulnerable', 'raw emotion', 'open up', 'honest about', 'admit that', 'being real'],
+  acceptance:    ['at peace', 'moved on', 'let go', 'embrace', 'okay with', 'come to terms'],
+  resistance:    ['resist', 'refuse to', 'oppose', 'push back', 'disagree', "won't do"],
   love:          ['love', 'adore', 'cherish', 'devoted', 'affection', 'warmth', 'care deeply', 'deeply care'],
-  loss:          ['gone', 'passed away', 'ended', 'over now', 'no more', 'finished', 'goodbye', 'farewell'],
+  // Removed: 'finished' ("I finished the implementation"), 'ended' (session ended), 'gone' (too generic)
+  loss:          ['passed away', 'over now', 'no more', 'goodbye forever', 'farewell', 'we lost them'],
 }
 
 const DECISION_WORDS = ['decided', 'chose', 'committed', 'resolved', 'must', 'will', 'determined', 'going to']
@@ -86,8 +98,14 @@ export function detectEmotions(text: string): EmotionName[] {
   return result
 }
 
+// Signal flags that indicate genuine importance — TECHNICAL is metadata only
+// and fires too broadly (architecture, deploy, config in almost every tech chunk)
+// so it is excluded from weight to preserve score distribution spread.
+const WEIGHT_FLAGS = new Set<FlagName>(['DECISION', 'ORIGIN', 'CORE', 'PIVOT', 'GENESIS'])
+
 export function computeWeight(emotions: EmotionName[], flags: FlagName[], text: string): number {
-  const flagScore = Math.min(flags.length * 0.3, 0.9)
+  const signalFlags = flags.filter((f) => WEIGHT_FLAGS.has(f))
+  const flagScore = Math.min(signalFlags.length * 0.35, 0.9)
   const emotionScore = Math.min(emotions.length * 0.1, 0.4)
 
   const words = text.toLowerCase().split(/\s+/)

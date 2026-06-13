@@ -1,7 +1,7 @@
 import { chunkText, normalizeText } from './chunker.js'
 import { detectEntities, buildEntityIndex } from './entity-detector.js'
 import { resolveCoreferences } from './coreference.js'
-import { extractTopics } from './topic-extractor.js'
+import { extractTopics, detectSpeakerNames } from './topic-extractor.js'
 import { selectKeySentence } from './sentence-scorer.js'
 import { detectEmotions, computeWeight } from './emotion-detector.js'
 import { detectFlags } from './flag-detector.js'
@@ -9,6 +9,8 @@ import { buildTunnels } from './tunnel-builder.js'
 import { dedupeZettels } from './dedupe.js'
 import { encode, decode, encodeZettelLine } from './encoder.js'
 import { wakeUp, topZettels } from './layer1.js'
+import { scanDocumentDates, resolveChunkDate } from './date-parser.js'
+import { detectContradictions } from './contradiction.js'
 import type {
   CompressResult,
   CompressOptions,
@@ -100,14 +102,29 @@ export function compress(text: string, options?: CompressOptions): CompressResul
   const allEntityNames = [...new Set(chunkEntities.flat())]
   const entityIndex = buildEntityIndex(allEntityNames)
 
+  // Pre-scan the full document for absolute date anchors once — each chunk
+  // resolver uses these to find the nearest preceding anchor for relative
+  // expressions ("yesterday", "last week") without re-scanning the whole text
+  const docDateAnchors = scanDocumentDates(normalized)
+
+  // Detect conversation speaker names once from the full text so per-chunk
+  // topic extraction can suppress them globally (not just within one chunk)
+  const speakerNames = detectSpeakerNames(normalized)
+
   // Pass 2: build each zettel
   let zettels: Zettel[] = chunks.map((chunk, i) => {
     const entities = chunkEntities[i] ?? []
-    const topics = extractTopics(chunk.text, options?.minTopicFrequency, options?.stopWords)
+    const topics = extractTopics(chunk.text, options?.minTopicFrequency, options?.stopWords, 8, speakerNames)
     const quote = selectKeySentence(chunk.text)
     const flags = detectFlags(chunk.text)
     const emotions = detectEmotions(chunk.text)
     const weight = computeWeight(emotions, flags, chunk.text)
+    const resolvedDate = resolveChunkDate(
+      chunk.text,
+      options?.date,
+      docDateAnchors,
+      chunk.charStart,
+    )
 
     return {
       id: String(i + 1).padStart(3, '0'),
@@ -119,6 +136,7 @@ export function compress(text: string, options?: CompressOptions): CompressResul
       flags,
       sourceStart: chunk.charStart,
       sourceEnd: chunk.charEnd,
+      ...(resolvedDate !== undefined ? { resolvedDate } : {}),
     }
   })
 
@@ -149,7 +167,7 @@ export function compress(text: string, options?: CompressOptions): CompressResul
       ? [`input is ${text.trim().length} chars — too short for meaningful compression`]
       : undefined
 
-  return {
+  const result: CompressResult = {
     zettels,
     tunnels,
     entityIndex,
@@ -162,6 +180,11 @@ export function compress(text: string, options?: CompressOptions): CompressResul
       options?.keepSource !== false ? { source: normalized } : {},
     ),
   }
+
+  const contradictions = detectContradictions(result)
+  if (contradictions.length > 0) result.contradictions = contradictions
+
+  return result
 }
 
 export function compressMany(texts: string[], options?: CompressOptions): CompressResult[] {
@@ -304,9 +327,11 @@ export function estimateTokens(text: string): number {
 }
 
 function markdownLine(z: Zettel): string {
-  const emotionStr = z.emotions.length > 0 ? z.emotions.join(', ') : 'none'
-  const flagStr = z.flags.length > 0 ? z.flags.join(', ') : 'none'
-  return `**[${z.id}]** ${z.quote} *(${emotionStr} | ${flagStr} | weight: ${z.weight})*`
+  const parts: string[] = []
+  if (z.resolvedDate) parts.push(z.resolvedDate)
+  if (z.flags.length > 0) parts.push(z.flags.join(', '))
+  const header = parts.length > 0 ? `**[${z.id}]** *(${parts.join(' · ')})* ` : `**[${z.id}]** `
+  return `${header}${z.quote}`
 }
 
 function tunnelsAmong(tunnels: Tunnel[], zettels: Zettel[]): Tunnel[] {
@@ -434,11 +459,13 @@ export { recall, recallContext } from './recall.js'
 export type { RecallOptions, RecallContextOptions } from './recall.js'
 export { CompressStream } from './stream.js'
 export type { StreamOptions } from './stream.js'
+export { detectContradictions } from './contradiction.js'
 export { ALL_FLAGS, ALL_EMOTIONS } from './types.js'
 export type {
   Zettel,
   Tunnel,
   EntityIndex,
+  Contradiction,
   CompressResult,
   CompressOptions,
   InjectOptions,

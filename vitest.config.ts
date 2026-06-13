@@ -6,6 +6,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
+      include: ['src/**'],
+      exclude: ['bench/**', 'playground/**'],
       thresholds: {
         lines: 90,
         functions: 90,

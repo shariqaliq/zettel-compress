@@ -5,12 +5,28 @@ import { minhashSignature, lshCandidatePairs } from './minhash.js'
 // below it, exact enumeration is both faster and has perfect recall
 const LSH_ACTIVATION = 500
 
+// Topics may now be multi-word phrases ("connection pool", "rate limiting").
+// Jaccard on the phrase strings themselves gives zero overlap between
+// "connection pool" and "connection timeout" even though "connection" is shared.
+// We expand each phrase into its component tokens and compute Jaccard over the
+// union of all tokens, so partial phrase overlap is properly weighted.
+function phraseTokens(topics: string[]): Set<string> {
+  const tokens = new Set<string>()
+  for (const t of topics) {
+    for (const word of t.split(/\s+/)) {
+      if (word.length >= 2) tokens.add(word)
+    }
+  }
+  return tokens
+}
+
 function jaccardTopics(a: string[], b: string[]): number {
-  const setA = new Set(a)
-  const setB = new Set(b)
+  const tokA = phraseTokens(a)
+  const tokB = phraseTokens(b)
+  if (tokA.size === 0 || tokB.size === 0) return 0
   let inter = 0
-  for (const t of setA) if (setB.has(t)) inter++
-  const union = setA.size + setB.size - inter
+  for (const t of tokA) if (tokB.has(t)) inter++
+  const union = tokA.size + tokB.size - inter
   return union > 0 ? inter / union : 0
 }
 
@@ -31,7 +47,11 @@ function candidatePairs(zettels: Zettel[]): Array<[number, number]> {
   // LSH path: signatures over the same tokens the exact scorer uses, so a
   // candidate hit always corresponds to real topic/entity overlap. Misses
   // are possible for weak similarities — the trade for ~O(n) at scale.
-  const signatures = zettels.map((z) => minhashSignature([...z.topics, ...z.entities]))
+  // Expand phrase topics into tokens before hashing so "connection pool" and
+  // "connection timeout" share the "connection" token in the signature
+  const signatures = zettels.map((z) =>
+    minhashSignature([...phraseTokens(z.topics), ...z.entities]),
+  )
   return lshCandidatePairs(signatures)
 }
 
@@ -68,12 +88,24 @@ export function buildTunnels(
     let label: string
     if (sharedEntities.length >= 2) {
       label = sharedEntities.slice(0, 3).map(entityLabel).join('+')
-    } else if (sharedEntities.length === 1) {
-      const sharedTopics = intersection(a.topics, b.topics)
-      label = sharedTopics.length > 0 ? sharedTopics.slice(0, 2).join('_') : (sharedEntities[0] ?? '')
     } else {
-      const sharedTopics = intersection(a.topics, b.topics)
-      label = sharedTopics.slice(0, 2).join('_')
+      // Prefer exact phrase matches for the label; fall back to shared tokens
+      // across all topics (needed when phrases don't match exactly but share words)
+      const sharedPhrases = intersection(a.topics, b.topics)
+      if (sharedPhrases.length > 0) {
+        const labelParts = sharedPhrases.slice(0, 2).join('_')
+        label = sharedEntities.length === 1
+          ? `${sharedEntities[0]}_${labelParts}`.replace(/^_+|_+$/g, '')
+          : labelParts
+      } else {
+        // shared token fallback: pick up to 2 tokens that appear in both sides
+        const tokA = phraseTokens(a.topics)
+        const tokB = phraseTokens(b.topics)
+        const sharedTok = [...tokA].filter((t) => tokB.has(t)).slice(0, 2)
+        label = sharedTok.length > 0
+          ? sharedTok.join('_')
+          : (sharedEntities[0] ?? '')
+      }
     }
 
     candidates.push({ i, j, score, tunnel: { from: a.id, to: b.id, label } })

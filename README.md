@@ -54,10 +54,10 @@ tokens total) compressed once each, gpt-4o-mini answering from
 | retrieval mode | overall F1 (cat 1–4) | single-hop | temporal | multi-hop | answer-in-context |
 |---|---|---|---|---|---|
 | quotes only (pre-0.3) | 5.9 | 8.0 | 1.3 | 5.4 | 9.7% |
-| **small-to-big (`recallContext`)** | **41.6** | **57.0** | **23.6** | **27.6** | **38.0%** |
+| **small-to-big (`recallContext`)** | **42.4** | **58.4** | **23.9** | **27.8** | **38.1%** |
 
-Adversarial category (446 unanswerable questions): 87.4% correct abstention,
-6.1% trapped. Average context: ~1,700 tokens/question — under 1% of the
+Adversarial category (446 unanswerable questions): 88.3% correct abstention,
+5.2% trapped. Average context: ~1,700 tokens/question — under 1% of the
 conversation. No-context baseline: F1 0.0.
 
 Honest framing: long-context GPT-4-class models with the *entire*
@@ -126,7 +126,7 @@ Text is chunked on paragraph boundaries (overlap snaps to word boundaries; every
 - **flags** — `DECISION | ORIGIN | CORE | PIVOT | GENESIS | TECHNICAL`
 - **emotions** — 30 states via word-boundary lexicons with negation scope (a useful filtering signal, not sentiment analysis — calibrate expectations accordingly)
 
-**Tunnels** link zettels sharing entities/topics above a Jaccard threshold (capped per zettel). `recall()` runs BM25 over quotes+topics+entities and expands hits one associative hop along tunnels with personalized PageRank.
+**Tunnels** link zettels sharing entities/topics above a Jaccard threshold (capped per zettel). `recall()` runs BM25 over quotes+topics+entities with automatic synonym expansion (move↔relocate, marry↔wedding, job↔career, and city abbreviations like NYC↔"New York") and a date-proximity bonus that boosts zettels whose `resolvedDate` matches a year/month mentioned in the query. Hits expand one associative hop along tunnels with personalized PageRank.
 
 ---
 
@@ -206,7 +206,7 @@ Tunnel building switches to MinHash/LSH candidate generation above 500 zettels �
 
 ### `recall(result, query, options?): Zettel[]`
 
-Query-time retrieval: BM25 over each zettel's full source chunk (falling back to quote/topics/entities when no source is kept), optionally expanded one hop along the tunnel graph with personalized PageRank. `{ topK?: number, hops?: boolean }`. Deterministic.
+Query-time retrieval: BM25 over each zettel's full source chunk (falling back to quote/topics/entities when no source is kept), with built-in synonym expansion (common paraphrase clusters: move/relocate/transfer, job/career/work, marry/wedding/spouse, and city abbreviations) and a date-proximity bonus that promotes zettels whose `resolvedDate` matches any year/month found in the query. Hits optionally expand one hop along the tunnel graph with personalized PageRank. `{ topK?: number, hops?: boolean, expandQuery?: boolean, after?: string, before?: string }`. Deterministic.
 
 ### `recallContext(result, query, options?): string`
 
@@ -318,14 +318,14 @@ export default {
 
 | Flag | Triggered by |
 |---|---|
-| `DECISION` | "decided", "committed", "resolved", "agreed" |
-| `ORIGIN` | "founded", "created", "started", "inception" |
-| `CORE` | "fundamental", "essential", "core principle" |
-| `PIVOT` | "turning point", "realized", "breakthrough" |
-| `GENESIS` | "led to", "resulted in", "triggered", "sparked" |
-| `TECHNICAL` | "architecture", "deploy", "api", "database" |
+| `DECISION` | "decided", "chose", "committed", "concluded", "agreed to", "going to", "we will", "final decision" |
+| `ORIGIN` | "founded", "originated", "first time ever", "inception", "birth of", "how it began" |
+| `CORE` | "fundamental", "essential", "key principle", "foundation of", "bedrock", "non-negotiable" |
+| `PIVOT` | "turning point", "breakthrough", "changed everything", "transformed", "pivotal", "game changer" |
+| `GENESIS` | "led to", "resulted in", "because of this", "gave rise to", "which caused", "set in motion" |
+| `TECHNICAL` | "architecture", "implement", "deploy", "config", "database", "module", "infrastructure", "stack", "endpoint", "schema" |
 
-All keyword matching is word-boundary anchored with negation-scope handling ("we never decided" does not flag).
+All keyword matching is word-boundary anchored with negation-scope handling ("we never decided" does not flag). `TECHNICAL` is metadata only — it does not affect zettel weight so technical detail chunks don't crowd out decisions and emotional moments in ranked selection.
 
 ---
 

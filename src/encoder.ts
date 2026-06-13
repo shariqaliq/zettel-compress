@@ -37,8 +37,16 @@ function escapeTopic(s: string): string {
     .replace(/\\/g, '\\\\')
     .replace(/,/g, '\\,')
     .replace(/\|/g, '\\|')
+    .replace(/ /g, '\\_')   // spaces in multi-word phrases → \_ (safe in field)
     .replace(/\r/g, '\\r')
     .replace(/\n/g, '\\n')
+}
+
+function unescapeTopic(s: string): string {
+  // unescape in reverse order: \_ → space first, then general unescape
+  return s
+    .replace(/\\(_)/g, ' ')
+    .replace(/\\(.)/g, (_, c: string) => (c === 'n' ? '\n' : c === 'r' ? '\r' : c))
 }
 
 function escapeEntityName(s: string): string {
@@ -211,7 +219,7 @@ function parseZettelV2(line: string, ctx: ParseContext): Zettel | null {
   if (isNaN(weight)) return null
 
   const { emotions, flags } = validateLists(after[2] ?? '', after[3] ?? '', id, ctx)
-  const topics = splitUnescaped(topicsStr, ',').filter(Boolean).map(unescapeText)
+  const topics = splitUnescaped(topicsStr, ',').filter(Boolean).map(unescapeTopic)
 
   const entities = codes
     .split('+')

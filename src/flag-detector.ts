@@ -1,12 +1,23 @@
 import type { FlagName } from './types.js'
 
 const FLAG_KEYWORDS: Record<FlagName, string[]> = {
-  DECISION:  ['decided', 'chose', 'committed', 'resolved', 'agreed', 'concluded', 'going to', 'will do', 'must do'],
-  ORIGIN:    ['founded', 'created', 'started', 'began', 'originated', 'established', 'first time', 'inception', 'birth of'],
-  CORE:      ['fundamental', 'essential', 'always', 'core', 'central', 'key principle', 'foundation', 'basis', 'bedrock'],
-  PIVOT:     ['turning point', 'realized', 'breakthrough', 'changed everything', 'shift', 'transformed', 'pivotal', 'game changer'],
-  GENESIS:   ['led to', 'resulted in', 'because of this', 'caused', 'triggered', 'sparked', 'gave rise to', 'origin of'],
-  TECHNICAL: ['architecture', 'implement', 'deploy', 'config', 'database', 'api', 'function', 'class', 'module', 'infrastructure', 'stack', 'endpoint', 'schema'],
+  // Removed: 'resolved' (bug/DNS resolved), bare 'agreed' (social filler in every chat turn)
+  // Kept 'agreed to' (multi-word — requires an explicit object, much less noisy)
+  DECISION:  ['decided', 'chose', 'committed', 'concluded', 'agreed to', 'going to', 'will do', 'must do', 'we will', 'final decision'],
+  // Removed: 'created' (created a function/PR), 'started' (server started, started a loop),
+  //          'began' (too generic), 'established' (established a connection)
+  ORIGIN:    ['founded', 'originated', 'first time ever', 'inception', 'birth of', 'how it began', 'where it started'],
+  // Removed: 'always' (fires on every habitual statement), 'core' (core dump, core i7),
+  //          'central' (central node), 'basis' (on the basis of)
+  CORE:      ['fundamental', 'essential', 'key principle', 'foundation of', 'bedrock', 'non-negotiable', 'must always'],
+  // Removed: 'shift' (bit shift, time shift), 'realized' (too generic — "I realized the bug")
+  PIVOT:     ['turning point', 'breakthrough', 'changed everything', 'transformed', 'pivotal', 'game changer', 'everything changed'],
+  // Removed: 'caused' ("this caused a bug" — routine), 'triggered' (event triggered),
+  //          'sparked' (overlaps inspiration emotion)
+  GENESIS:   ['led to', 'resulted in', 'because of this', 'gave rise to', 'origin of', 'which caused', 'set in motion'],
+  // Removed: 'function' (mathematical function, "function of"), 'class' (world class, class of problems),
+  //          'api' (fires in almost every tech chunk — too broad)
+  TECHNICAL: ['architecture', 'implement', 'deploy', 'config', 'database', 'module', 'infrastructure', 'stack', 'endpoint', 'schema'],
 }
 
 const FLAG_ORDER: FlagName[] = ['DECISION', 'ORIGIN', 'CORE', 'PIVOT', 'GENESIS', 'TECHNICAL']

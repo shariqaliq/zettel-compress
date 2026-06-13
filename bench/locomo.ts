@@ -22,7 +22,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const MODEL = process.env.QA_MODEL ?? 'gpt-4o-mini'
 const CONCURRENCY = 4 // ~2k-token contexts against a 200k TPM org limit
 const TOPK = 10
-const MAX_CONTEXT_TOKENS = 2000
+const MAX_CONTEXT_TOKENS = 3000
 
 // ── key loading ───────────────────────────────────────────────────────────────
 function loadKey(): string {
@@ -209,10 +209,14 @@ async function main(): Promise<void> {
   console.log(`# LoCoMo-10 — model: ${MODEL}, recall top-${TOPK}\n`)
 
   // compress all conversations up front
+  // Pass the first session date so relative expressions within each session
+  // have a fallback anchor (the parenthesized timestamps in the text itself
+  // are the primary anchor and will override this for most chunks)
   const memories = data.map((s) => {
     const text = conversationText(s.conversation)
+    const firstSessionDate = String(s.conversation['session_1_date_time'] ?? '')
     const t0 = performance.now()
-    const memory = compress(text)
+    const memory = compress(text, { date: firstSessionDate })
     const ms = performance.now() - t0
     return { s, memory, tokens: estimateTokens(text), ms }
   })
